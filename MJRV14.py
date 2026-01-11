@@ -30,10 +30,10 @@ is_upload_only = st.query_params.get("page") == "upload"
 
 # --- 4. ฟังก์ชันบันทึกข้อมูล (ปรับเพื่อแก้ปัญหา Auto Progress) ---
 def show_upload_form():
-    st.header("🏗️ บันทึกความคืบหน้า")
+    st.header("🏗️ Update Progress")
     
     # 4.1 ดึงค่าล่าสุดออกมาคำนวณก่อนสร้างฟอร์ม
-    task_name = st.text_input("ชื่องาน / รหัสงาน (MEP Task)", key="task_input_key")
+    task_name = st.text_input("Task name / Code name (MEP Task)", key="task_input_key")
     
     current_progress = 0
     if task_name and not df_raw.empty:
@@ -133,4 +133,5 @@ else:
             st.warning("ไม่พบข้อมูลในช่วงที่เลือก")
     else:
         st.info("ยังไม่มีข้อมูล")
+
 
