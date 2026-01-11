@@ -90,8 +90,8 @@ else:
                          range_x=[0, 115], color_discrete_sequence=['#FFD1D1'])
             fig.update_traces(textposition='outside', width=0.6)
             fig.update_layout(xaxis_ticksuffix="%", height=max(400, len(df_latest) * 30), 
-                              yaxis_title="", bargap=0.1, margin=dict(l=250),
-                              yaxis=dict(autorange="reversed", tickfont=dict(family="Courier New, monospace", size=14)))
+                              yaxis_title="", bargap=0.2, margin=dict(l=250),
+                              yaxis=dict(autorange="reversed", tickfont=dict(family="Calibri, monospace", size=16)))
             st.plotly_chart(fig, use_container_width=True)
 
             # --- 6. Admin Edit & Delete Section ---
@@ -155,5 +155,6 @@ else:
             st.warning("No data found.")
     else:
         st.info("No data available.")
+
 
 
