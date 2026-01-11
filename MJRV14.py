@@ -15,9 +15,9 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="MEP Tracker V22", layout="wide")
+st.set_page_config(page_title="MEP Tracker V23 Admin", layout="wide")
 
-# --- 2. ดึงข้อมูล ---
+# --- 2. Data Fetching ---
 response = supabase.table("construction_progress").select("*").execute()
 df_raw = pd.DataFrame(response.data)
 
@@ -27,7 +27,7 @@ if not df_raw.empty:
 
 is_upload_only = st.query_params.get("page") == "upload"
 
-# --- 4. ฟังก์ชันบันทึกข้อมูล ---
+# --- 4. ฟังก์ชันบันทึกข้อมูล (Input Form) ---
 def show_upload_form():
     st.header("🏗️ Update Progress")
     task_name = st.text_input("Task name / Code name (MEP Task)", key="task_input_key")
@@ -37,7 +37,7 @@ def show_upload_form():
         last_record = df_raw[df_raw['task_name'] == task_name]
         if not last_record.empty:
             current_progress = last_record.iloc[0]['status']
-            st.info(f"🔍 Current progress for this task is {current_progress}%")
+            st.info(f"🔍 Current progress is {current_progress}%")
 
     with st.form("progress_form", clear_on_submit=True):
         staff_list = ["", "Autapol", "Suppawat", "Jirapat", "Puwanai", "Anu", "Chatchai(Art)", "Chatchai(P'Pok)", "Pimchanok"]
@@ -56,7 +56,7 @@ def show_upload_form():
                     supabase.storage.from_('images').upload(file_name, uploaded_file.read())
                     image_url = supabase.storage.from_('images').get_public_url(file_name)
 
-                data = {"task_name": task_name, "update_by": update_by, "status": status}
+                data = {"task_name": task_name, "update_by": update_by, "status": status, "image_url": image_url}
                 supabase.table("construction_progress").insert(data).execute()
                 st.success("Recorded!")
                 st.rerun()
@@ -70,7 +70,7 @@ else:
 
     st.title("🚧 MEP Construction Dashboard")
     
-    # Filter
+    # 5.1 Filters
     col_f1, col_f2 = st.columns(2)
     with col_f1: start_date = st.date_input("From date", datetime.now())
     with col_f2: end_date = st.date_input("To date", datetime.now())
@@ -80,50 +80,66 @@ else:
         df_filtered = df_raw[mask].copy()
 
         if not df_filtered.empty:
-            # ดึงข้อมูลล่าสุด
+            # 5.2 Chart (Split Column Layout)
             df_latest = df_filtered.sort_values('created_at', ascending=False).drop_duplicates('task_name')
-            
-            # --- เทคนิคสร้าง Label แบบเว้นวรรคให้เหมือนมี 2 คอลัมน์ ---
-            # ปรับจำนวนช่องว่าง (space) ตามความเหมาะสมเพื่อให้ดูแยกคอลัมน์
             df_latest['display_label'] = df_latest.apply(lambda x: f"{x['update_by'] : <15} {x['task_name']}", axis=1)
 
             st.subheader("📊 Progress Overview")
-            
-            fig = px.bar(
-                df_latest, 
-                x='status', 
-                y='display_label', 
-                orientation='h', 
-                text=df_latest['status'].apply(lambda x: f'{x}%'),
-                range_x=[0, 115],
-                color_discrete_sequence=['#FFD1D1'] # สีชมพูตามรูป image_337af4
-            )
-            
-            fig.update_traces(
-                textposition='outside',
-                width=0.6 # ทำให้แท่งกราฟบางลง ดู Compact
-            )
-            
-            fig.update_layout(
-                xaxis_ticksuffix="%", 
-                height=max(400, len(df_latest) * 45), 
-                yaxis_title="",
-                bargap=0.4,
-                margin=dict(l=250), # เพิ่มพื้นที่ด้านซ้ายสำหรับชื่อที่ยาวขึ้น
-                # ใช้ฟอนต์แบบคงที่ (Monospace) เพื่อให้คอลัมน์ตรงกันเป๊ะ
-                yaxis=dict(
-                    autorange="reversed",
-                    tickfont=dict(family="Courier New, monospace", size=14)
-                )
-            )
-            
+            fig = px.bar(df_latest, x='status', y='display_label', orientation='h', 
+                         text=df_latest['status'].apply(lambda x: f'{x}%'),
+                         range_x=[0, 115], color_discrete_sequence=['#FFD1D1'])
+            fig.update_traces(textposition='outside', width=0.6)
+            fig.update_layout(xaxis_ticksuffix="%", height=max(400, len(df_latest) * 45), 
+                              yaxis_title="", bargap=0.4, margin=dict(l=250),
+                              yaxis=dict(autorange="reversed", tickfont=dict(family="Courier New, monospace", size=14)))
             st.plotly_chart(fig, use_container_width=True)
 
-            # Raw Data & Gallery
+            # --- 6. Admin Edit & Delete Section ---
             st.divider()
-            st.subheader("📋 Raw Data Table")
-            st.dataframe(df_filtered[['task_name', 'status', 'update_by', 'created_at']], use_container_width=True)
+            st.subheader("🔐 Admin Control Panel (Edit / Delete)")
+            st.write("You can edit values directly in the table below and click 'Save Changes'. To delete, check the boxes and click Delete.")
 
+            # สร้างตัว Data Editor เพื่อแก้ไขข้อมูล
+            # เราจะแสดง column 'id' เพื่อใช้อ้างอิงตอนลบ/แก้ไข แต่ล็อคไว้ไม่ให้แก้
+            edited_df = st.data_editor(
+                df_filtered[['id', 'created_at', 'update_by', 'task_name', 'status', 'image_url']],
+                column_config={
+                    "id": None, # ซ่อน ID
+                    "image_url": st.column_config.LinkColumn("Photo Link"),
+                    "status": st.column_config.NumberColumn("Progress %", min_value=0, max_value=100),
+                    "created_at": st.column_config.DatetimeColumn("Date Time", disabled=True)
+                },
+                key="admin_editor",
+                use_container_width=True,
+                num_rows="dynamic" # ยอมให้กดลบแถวได้
+            )
+
+            col_btn1, col_btn2 = st.columns([1, 5])
+            with col_btn1:
+                if st.button("💾 Save All Changes", type="primary"):
+                    # ลอจิกการ Update: วนลูปเช็คข้อมูลในหน้าจอเทียบกับ Database
+                    for index, row in edited_df.iterrows():
+                        supabase.table("construction_progress").update({
+                            "task_name": row['task_name'],
+                            "update_by": row['update_by'],
+                            "status": row['status'],
+                            "image_url": row['image_url']
+                        }).eq("id", row['id']).execute()
+                    st.success("Updates saved successfully!")
+                    st.rerun()
+
+            # ส่วนของการลบ (ใช้ ID จากการเลือกใน editor หรือเลือกจาก list)
+            st.divider()
+            st.warning("⚠️ Dangerous Area: Delete Records")
+            id_to_delete = st.selectbox("Select Task ID to Delete", options=df_filtered['id'].tolist(), 
+                                        format_func=lambda x: f"ID: {x} | {df_filtered[df_filtered['id']==x]['task_name'].values[0]}")
+            
+            if st.button(f"🗑️ Delete Record {id_to_delete}"):
+                supabase.table("construction_progress").delete().eq("id", id_to_delete).execute()
+                st.success(f"Record {id_to_delete} deleted!")
+                st.rerun()
+
+            # 7. Photo Gallery
             st.divider()
             st.subheader("📸 Photo Progress")
             for task in df_latest['task_name'].unique():
@@ -139,4 +155,3 @@ else:
             st.warning("No data found.")
     else:
         st.info("No data available.")
-
