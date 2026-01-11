@@ -108,7 +108,7 @@ else:
                 orientation='h', 
                 text=df_latest['status'].apply(lambda x: f'{x}%'), # เพิ่ม % หลังตัวเลขบนแท่ง
                 range_x=[0, 115], # ขยายขอบเขต X เล็กน้อยเพื่อให้เครื่องหมาย % ไม่โดนตัด
-                color_discrete_sequence=['#6c757d'],
+                color_discrete_sequence=['#FFD1D1'],
                 hover_data={'status': True} # ให้โชว์ข้อมูลเวลาเอาเมาส์ไปชี้
             )
             
@@ -151,3 +151,4 @@ else:
     else:
 
         st.info("ยังไม่มีข้อมูล")
+
