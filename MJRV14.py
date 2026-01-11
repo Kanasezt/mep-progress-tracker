@@ -15,7 +15,7 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="MEP Tracker V18", layout="wide")
+st.set_page_config(page_title="MEP Tracker V19", layout="wide")
 
 # --- 2. Data Fetching ---
 response = supabase.table("construction_progress").select("*").execute()
@@ -25,14 +25,12 @@ if not df_raw.empty:
     df_raw['created_at'] = pd.to_datetime(df_raw['created_at']).dt.tz_localize(None)
     df_raw = df_raw.sort_values('created_at', ascending=False)
 
-# --- 3. Check Page Mode ---
 is_upload_only = st.query_params.get("page") == "upload"
 
-# --- 4. Function: Update Form (with Auto-Progress) ---
+# --- 4. Update Form Function ---
 def show_upload_form():
     st.header("🏗️ Update Progress")
     
-    # Task Input (Outside form for real-time lookup)
     task_name = st.text_input("Task Name / Code (MEP Task)", key="task_input_key")
     
     current_progress = 0
@@ -43,22 +41,20 @@ def show_upload_form():
             last_user = last_record.iloc[0]['update_by']
             st.markdown(f"""
                 <div style="background-color: #FFD1D1; padding: 10px; border-radius: 5px; color: black; margin-bottom: 15px; border: 1px solid #ffb1b1;">
-                    🔍 <b>Previous Status:</b> {current_progress}% (Updated by: {last_user})
+                    🔍 <b>Latest Update:</b> {current_progress}% by {last_user}
                 </div>
             """, unsafe_allow_html=True)
 
     with st.form("progress_form", clear_on_submit=True):
         staff_list = ["", "Autapol", "Suppawat", "Jirapat", "Puwanai", "Anu", "Chatchai(Art)", "Chatchai(P'Pok)", "Pimchanok"]
         update_by = st.selectbox("Select Your Name", options=staff_list)
-        
         status = st.number_input("Current Progress (%)", min_value=0, max_value=100, value=int(current_progress))
-        
         uploaded_file = st.file_uploader("Upload Site Photo", type=['jpg', 'png', 'jpeg'])
         submitted = st.form_submit_button("Submit Update")
 
         if submitted:
             if not task_name or not update_by:
-                st.error("Please provide both Task Name and Your Name.")
+                st.error("Please fill in all required fields.")
             else:
                 image_url = ""
                 if uploaded_file:
@@ -68,10 +64,10 @@ def show_upload_form():
 
                 data = {"task_name": task_name, "update_by": update_by, "status": status, "image_url": image_url}
                 supabase.table("construction_progress").insert(data).execute()
-                st.success("Data successfully recorded!")
+                st.success("Record Updated!")
                 st.rerun()
 
-# --- 5. Main Dashboard Display ---
+# --- 5. Dashboard ---
 if is_upload_only:
     show_upload_form()
 else:
@@ -80,7 +76,6 @@ else:
 
     st.title("🚧 MEP Construction Dashboard")
     
-    # History Filter
     st.subheader("🗓️ Filter History")
     col_f1, col_f2 = st.columns(2)
     with col_f1: start_date = st.date_input("Start Date", datetime.now())
@@ -91,35 +86,42 @@ else:
         df_filtered = df_raw[mask].copy()
 
         if not df_filtered.empty:
-            # Prepare Chart Data (Task Name + Latest Staff)
             df_latest = df_filtered.sort_values('created_at', ascending=False).drop_duplicates('task_name')
-            df_latest['chart_label'] = df_latest.apply(lambda x: f"{x['task_name']} ({x['update_by']})", axis=1)
             
             st.subheader("📊 Progress Overview")
+            
+            # --- ปรับแต่งแกน Y ให้แยกคอลัมน์และกราฟบางลง ---
             fig = px.bar(
                 df_latest, 
                 x='status', 
-                y='chart_label', 
+                y=['update_by', 'task_name'], # สลับลำดับเพื่อโชว์ชื่อคนก่อนชื่อ Task ในคอลัมน์ที่แยกกัน
                 orientation='h', 
                 text=df_latest['status'].apply(lambda x: f'{x}%'),
                 range_x=[0, 115],
-                color_discrete_sequence=['#FFD1D1']
+                color_discrete_sequence=['#FFD1D1'],
+                category_orders={"task_name": df_latest['task_name'].tolist()} 
             )
-            fig.update_traces(textposition='outside')
-            fig.update_layout(xaxis_ticksuffix="%", height=500, yaxis_title="Tasks (Latest Reporter)")
+            
+            fig.update_traces(
+                textposition='outside',
+                width=0.6 # ปรับความหนาของแท่งกราฟ (0.1 - 1.0) ยิ่งน้อยยิ่งบาง
+            )
+            
+            fig.update_layout(
+                xaxis_ticksuffix="%", 
+                height=max(400, len(df_latest) * 40), # ความสูงยืดหยุ่นตามจำนวน Task
+                yaxis_title="",
+                bargap=0.4, # เพิ่มช่องว่างระหว่างแท่งเพื่อให้ดู Compact
+                margin=dict(l=200) # เพิ่มพื้นที่ด้านซ้ายสำหรับชื่อที่แยกคอลัมน์
+            )
+            
             st.plotly_chart(fig, use_container_width=True)
 
-            # Data Table & Export
+            # Table & Gallery (เหมือนเดิม)
             st.divider()
-            col_t1, col_t2 = st.columns([3, 1])
-            with col_t1: st.subheader("📋 Raw Data Table")
-            with col_t2:
-                csv = df_filtered[['created_at', 'task_name', 'status', 'update_by', 'image_url']].to_csv(index=False).encode('utf-8-sig')
-                st.download_button("📥 Export CSV", data=csv, file_name="MEP_Export.csv", mime="text/csv")
-            
+            st.subheader("📋 Raw Data Table")
             st.dataframe(df_filtered[['created_at', 'task_name', 'status', 'update_by']], use_container_width=True)
 
-            # Photo Gallery
             st.divider()
             st.subheader("📸 Site Photo Logs")
             for task in df_latest['task_name'].unique():
@@ -132,6 +134,6 @@ else:
                             st.image(row['image_url'], use_container_width=True)
                             st.caption(f"{row['created_at'].strftime('%d/%m/%y %H:%M')}")
         else:
-            st.warning("No records found for the selected date range.")
+            st.warning("No records found.")
     else:
-        st.info("No data available yet.")
+        st.info("No data available.")
