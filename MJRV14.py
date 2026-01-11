@@ -17,6 +17,27 @@ supabase: Client = create_client(URL, KEY)
 
 st.set_page_config(page_title="MEP Tracker V23 Admin", layout="wide")
 
+# --- ใส่ไว้หลัง st.set_page_config ---
+st.markdown("""
+    <style>
+    /* ลด Padding ด้านข้างในมือถือ */
+    .block-container {
+        padding-top: 1rem;
+        padding-bottom: 0rem;
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+    /* บังคับให้ Input ต่างๆ ไม่กว้างเกินหน้าจอ */
+    .stTextInput, .stSelectbox, .stNumberInput {
+        width: 100% !important;
+    }
+    /* ปรับขนาดฟอนต์บน Mobile ให้เล็กลงนิดหน่อย */
+    @media (max-width: 640px) {
+        .stMarkdown { font-size: 14px; }
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # --- 2. Data Fetching ---
 response = supabase.table("construction_progress").select("*").execute()
 df_raw = pd.DataFrame(response.data)
@@ -155,6 +176,7 @@ else:
             st.warning("No data found.")
     else:
         st.info("No data available.")
+
 
 
 
