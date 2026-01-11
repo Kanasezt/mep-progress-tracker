@@ -89,7 +89,7 @@ else:
                          text=df_latest['status'].apply(lambda x: f'{x}%'),
                          range_x=[0, 115], color_discrete_sequence=['#FFD1D1'])
             fig.update_traces(textposition='outside', width=0.6)
-            fig.update_layout(xaxis_ticksuffix="%", height=max(400, len(df_latest) * 45), 
+            fig.update_layout(xaxis_ticksuffix="%", height=max(400, len(df_latest) * 30), 
                               yaxis_title="", bargap=0.1, margin=dict(l=250),
                               yaxis=dict(autorange="reversed", tickfont=dict(family="Courier New, monospace", size=14)))
             st.plotly_chart(fig, use_container_width=True)
@@ -155,4 +155,5 @@ else:
             st.warning("No data found.")
     else:
         st.info("No data available.")
+
 
