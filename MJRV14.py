@@ -56,7 +56,7 @@ def show_upload_form():
                     supabase.storage.from_('images').upload(file_name, uploaded_file.read())
                     image_url = supabase.storage.from_('images').get_public_url(file_name)
 
-                data = {"task_name": task_name, "update_by": update_by, "status": status, "image_url": image_url}
+                data = {"task_name": task_name, "update_by": update_by, "status": status}
                 supabase.table("construction_progress").insert(data).execute()
                 st.success("Recorded!")
                 st.rerun()
@@ -122,7 +122,7 @@ else:
             # Raw Data & Gallery
             st.divider()
             st.subheader("📋 Raw Data Table")
-            st.dataframe(df_filtered[['created_at', 'task_name', 'status', 'update_by']], use_container_width=True)
+            st.dataframe(df_filtered[['task_name', 'status', 'update_by', 'created_at']], use_container_width=True)
 
             st.divider()
             st.subheader("📸 Photo Progress")
@@ -139,3 +139,4 @@ else:
             st.warning("No data found.")
     else:
         st.info("No data available.")
+
