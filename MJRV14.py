@@ -42,24 +42,24 @@ def show_upload_form():
             current_progress = last_record.iloc[0]['status']
             st.markdown(f"""
                 <div style="background-color: #FFD1D1; padding: 10px; border-radius: 5px; color: black; margin-bottom: 10px;">
-                    🔍 ตรวจพบข้อมูลเดิม: งานนี้ทำค้างไว้ที่ <b>{current_progress}%</b>
+                    🔍 Found previosly progress is : <b>{current_progress}%</b>
                 </div>
             """, unsafe_allow_html=True)
 
     # 4.2 เริ่มส่วนฟอร์มบันทึก
     with st.form("progress_form", clear_on_submit=True):
         staff_list = ["", "Autapol", "Suppawat", "Jirapat", "Puwanai", "Anu", "Chatchai(Art)", "Chatchai(P'Pok)", "Pimchanok"]
-        update_by = st.selectbox("ชื่อผู้รายงาน", options=staff_list)
+        update_by = st.selectbox("Select Your Name", options=staff_list)
         
         # ใส่ค่า current_progress ที่ดึงมาได้ลงไปในช่องนี้
         status = st.number_input("Progress (%)", min_value=0, max_value=100, value=int(current_progress))
         
-        uploaded_file = st.file_uploader("ถ่ายภาพหน้างาน", type=['jpg', 'png', 'jpeg'])
-        submitted = st.form_submit_button("ส่งข้อมูลอัปเดต")
+        uploaded_file = st.file_uploader("Photo Progress", type=['jpg', 'png', 'jpeg'])
+        submitted = st.form_submit_button("Submit Progress")
 
         if submitted:
             if not task_name or not update_by:
-                st.error("กรุณากรอกชื่อ Task และเลือกชื่อผู้รายงาน")
+                st.error("Fill the Task and select Your Name")
             else:
                 image_url = ""
                 if uploaded_file:
@@ -69,7 +69,7 @@ def show_upload_form():
 
                 data = {"task_name": task_name, "update_by": update_by, "status": status, "image_url": image_url}
                 supabase.table("construction_progress").insert(data).execute()
-                st.success("บันทึกสำเร็จ!")
+                st.success("Recorded success")
                 st.rerun()
 
 # --- 5. การแสดงผล Dashboard ---
@@ -81,10 +81,10 @@ else:
 
     st.title("🚧 MEP Construction Dashboard")
     
-    st.subheader("🗓️ กรองข้อมูลย้อนหลัง")
+    st.subheader("🗓️ History Search")
     col_f1, col_f2 = st.columns(2)
-    with col_f1: start_date = st.date_input("ตั้งแต่วันที่", datetime.now())
-    with col_f2: end_date = st.date_input("จนถึงวันที่", datetime.now())
+    with col_f1: start_date = st.date_input("From date", datetime.now())
+    with col_f2: end_date = st.date_input("To date", datetime.now())
 
     if not df_raw.empty:
         mask = (df_raw['created_at'].dt.date >= start_date) & (df_raw['created_at'].dt.date <= end_date)
@@ -93,7 +93,7 @@ else:
         if not df_filtered.empty:
             df_latest = df_filtered.sort_values('created_at', ascending=False).drop_duplicates('task_name')
             
-            st.subheader("📊 Dashboard & รายงาน")
+            st.subheader("📊 Dashboard & Report")
             # กราฟแท่งสีชมพู #FFD1D1 ตามรูป 337af4
             fig = px.bar(
                 df_latest, 
@@ -111,7 +111,7 @@ else:
             # Table & Export
             st.divider()
             col_t1, col_t2 = st.columns([3, 1])
-            with col_t1: st.subheader("📋 ตารางข้อมูล")
+            with col_t1: st.subheader("📋 Raw data table")
             with col_t2:
                 csv = df_filtered[['created_at', 'task_name', 'status', 'update_by', 'image_url']].to_csv(index=False).encode('utf-8-sig')
                 st.download_button("📥 Export CSV", data=csv, file_name="MEP_Export.csv", mime="text/csv")
@@ -119,7 +119,7 @@ else:
 
             # Gallery
             st.divider()
-            st.subheader("📸 ภาพความคืบหน้าหน้างาน")
+            st.subheader("📸 Photo Progress")
             for task in df_latest['task_name'].unique():
                 img_data = df_filtered[(df_filtered['task_name'] == task) & (df_filtered['image_url'] != "")]
                 if not img_data.empty:
@@ -133,3 +133,4 @@ else:
             st.warning("ไม่พบข้อมูลในช่วงที่เลือก")
     else:
         st.info("ยังไม่มีข้อมูล")
+
