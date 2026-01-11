@@ -15,7 +15,7 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="MEP Tracker V19", layout="wide")
+st.set_page_config(page_title="MEP Tracker V20", layout="wide")
 
 # --- 2. Data Fetching ---
 response = supabase.table("construction_progress").select("*").execute()
@@ -30,7 +30,6 @@ is_upload_only = st.query_params.get("page") == "upload"
 # --- 4. Update Form Function ---
 def show_upload_form():
     st.header("🏗️ Update Progress")
-    
     task_name = st.text_input("Task Name / Code (MEP Task)", key="task_input_key")
     
     current_progress = 0
@@ -40,8 +39,8 @@ def show_upload_form():
             current_progress = last_record.iloc[0]['status']
             last_user = last_record.iloc[0]['update_by']
             st.markdown(f"""
-                <div style="background-color: #FFD1D1; padding: 10px; border-radius: 5px; color: black; margin-bottom: 15px; border: 1px solid #ffb1b1;">
-                    🔍 <b>Latest Update:</b> {current_progress}% by {last_user}
+                <div style="background-color: #FFD1D1; padding: 10px; border-radius: 5px; color: black; margin-bottom: 15px;">
+                    🔍 <b>Previous Status:</b> {current_progress}% by {last_user}
                 </div>
             """, unsafe_allow_html=True)
 
@@ -54,7 +53,7 @@ def show_upload_form():
 
         if submitted:
             if not task_name or not update_by:
-                st.error("Please fill in all required fields.")
+                st.error("Please fill in all fields.")
             else:
                 image_url = ""
                 if uploaded_file:
@@ -64,7 +63,7 @@ def show_upload_form():
 
                 data = {"task_name": task_name, "update_by": update_by, "status": status, "image_url": image_url}
                 supabase.table("construction_progress").insert(data).execute()
-                st.success("Record Updated!")
+                st.success("Record Saved!")
                 st.rerun()
 
 # --- 5. Dashboard ---
@@ -86,38 +85,42 @@ else:
         df_filtered = df_raw[mask].copy()
 
         if not df_filtered.empty:
+            # ดึงเฉพาะค่าล่าสุดของแต่ละ Task
             df_latest = df_filtered.sort_values('created_at', ascending=False).drop_duplicates('task_name')
             
             st.subheader("📊 Progress Overview")
             
-            # --- ปรับแต่งแกน Y ให้แยกคอลัมน์และกราฟบางลง ---
+            # --- ปรับแก้กราฟให้แยก Column ชื่อคน และทำให้ดู Compact ---
             fig = px.bar(
                 df_latest, 
                 x='status', 
-                y=['update_by', 'task_name'], # สลับลำดับเพื่อโชว์ชื่อคนก่อนชื่อ Task ในคอลัมน์ที่แยกกัน
+                # แยกเป็น 2 คอลัมน์: ชื่อ Task และ ชื่อผู้รายงาน
+                y=['task_name', 'update_by'], 
                 orientation='h', 
                 text=df_latest['status'].apply(lambda x: f'{x}%'),
                 range_x=[0, 115],
-                color_discrete_sequence=['#FFD1D1'],
-                category_orders={"task_name": df_latest['task_name'].tolist()} 
+                color_discrete_sequence=['#FFD1D1']
             )
             
             fig.update_traces(
                 textposition='outside',
-                width=0.6 # ปรับความหนาของแท่งกราฟ (0.1 - 1.0) ยิ่งน้อยยิ่งบาง
+                width=0.4 # ปรับความหนาของแท่งกราฟ (ยิ่งน้อยยิ่งบาง)
             )
             
             fig.update_layout(
                 xaxis_ticksuffix="%", 
-                height=max(400, len(df_latest) * 40), # ความสูงยืดหยุ่นตามจำนวน Task
+                # ปรับความสูงให้เหมาะสม (40px ต่อหนึ่งรายการ)
+                height=max(400, len(df_latest) * 45), 
                 yaxis_title="",
-                bargap=0.4, # เพิ่มช่องว่างระหว่างแท่งเพื่อให้ดู Compact
-                margin=dict(l=200) # เพิ่มพื้นที่ด้านซ้ายสำหรับชื่อที่แยกคอลัมน์
+                bargap=0.5, # เพิ่มช่องว่างระหว่างแท่งเพื่อให้ดูไม่ตัน
+                margin=dict(l=250), # ขยับที่ว่างด้านซ้ายเพื่อโชว์ 2 คอลัมน์ให้ชัด
+                # ตั้งค่าให้แกน Y แสดงผลแบบแยกชื่อ (Multi-category)
+                yaxis=dict(autorange="reversed", tickfont=dict(size=12))
             )
             
             st.plotly_chart(fig, use_container_width=True)
 
-            # Table & Gallery (เหมือนเดิม)
+            # Table & Gallery
             st.divider()
             st.subheader("📋 Raw Data Table")
             st.dataframe(df_filtered[['created_at', 'task_name', 'status', 'update_by']], use_container_width=True)
