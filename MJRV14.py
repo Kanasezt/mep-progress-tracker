@@ -15,7 +15,7 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="MEP Tracker V21", layout="wide")
+st.set_page_config(page_title="MEP Tracker V22", layout="wide")
 
 # --- 2. ดึงข้อมูล ---
 response = supabase.table("construction_progress").select("*").execute()
@@ -25,14 +25,11 @@ if not df_raw.empty:
     df_raw['created_at'] = pd.to_datetime(df_raw['created_at']).dt.tz_localize(None)
     df_raw = df_raw.sort_values('created_at', ascending=False)
 
-# --- 3. แยกหน้า Mobile ---
 is_upload_only = st.query_params.get("page") == "upload"
 
-# --- 4. ฟังก์ชันบันทึกข้อมูล (Auto Progress) ---
+# --- 4. ฟังก์ชันบันทึกข้อมูล ---
 def show_upload_form():
     st.header("🏗️ Update Progress")
-    
-    # ดึงค่าล่าสุดออกมานอกฟอร์มเพื่อให้ Auto-fill ทำงาน
     task_name = st.text_input("Task name / Code name (MEP Task)", key="task_input_key")
     
     current_progress = 0
@@ -40,11 +37,7 @@ def show_upload_form():
         last_record = df_raw[df_raw['task_name'] == task_name]
         if not last_record.empty:
             current_progress = last_record.iloc[0]['status']
-            st.markdown(f"""
-                <div style="background-color: #FFD1D1; padding: 10px; border-radius: 5px; color: black; margin-bottom: 10px;">
-                    🔍 Found previosly progress is : <b>{current_progress}%</b>
-                </div>
-            """, unsafe_allow_html=True)
+            st.info(f"🔍 Current progress for this task is {current_progress}%")
 
     with st.form("progress_form", clear_on_submit=True):
         staff_list = ["", "Autapol", "Suppawat", "Jirapat", "Puwanai", "Anu", "Chatchai(Art)", "Chatchai(P'Pok)", "Pimchanok"]
@@ -55,7 +48,7 @@ def show_upload_form():
 
         if submitted:
             if not task_name or not update_by:
-                st.error("Fill the Task and select Your Name")
+                st.error("Please fill Task Name and Select Your Name")
             else:
                 image_url = ""
                 if uploaded_file:
@@ -65,10 +58,10 @@ def show_upload_form():
 
                 data = {"task_name": task_name, "update_by": update_by, "status": status, "image_url": image_url}
                 supabase.table("construction_progress").insert(data).execute()
-                st.success("Recorded success")
+                st.success("Recorded!")
                 st.rerun()
 
-# --- 5. การแสดงผล Dashboard ---
+# --- 5. Dashboard ---
 if is_upload_only:
     show_upload_form()
 else:
@@ -77,7 +70,7 @@ else:
 
     st.title("🚧 MEP Construction Dashboard")
     
-    st.subheader("🗓️ History Search")
+    # Filter
     col_f1, col_f2 = st.columns(2)
     with col_f1: start_date = st.date_input("From date", datetime.now())
     with col_f2: end_date = st.date_input("To date", datetime.now())
@@ -87,44 +80,50 @@ else:
         df_filtered = df_raw[mask].copy()
 
         if not df_filtered.empty:
-            # ดึงข้อมูลล่าสุดของแต่ละ Task
+            # ดึงข้อมูลล่าสุด
             df_latest = df_filtered.sort_values('created_at', ascending=False).drop_duplicates('task_name')
             
-            st.subheader("📊 Dashboard & Report")
+            # --- เทคนิคสร้าง Label แบบเว้นวรรคให้เหมือนมี 2 คอลัมน์ ---
+            # ปรับจำนวนช่องว่าง (space) ตามความเหมาะสมเพื่อให้ดูแยกคอลัมน์
+            df_latest['display_label'] = df_latest.apply(lambda x: f"{x['update_by'] : <15} {x['task_name']}", axis=1)
+
+            st.subheader("📊 Progress Overview")
             
-            # --- ส่วนที่แก้ไข: แยก Column และทำให้ Compact ---
             fig = px.bar(
                 df_latest, 
                 x='status', 
-                y=['update_by', 'task_name'], # แยกชื่อคนรายงานมาไว้ Column หน้าสุด
+                y='display_label', 
                 orientation='h', 
                 text=df_latest['status'].apply(lambda x: f'{x}%'),
                 range_x=[0, 115],
-                color_discrete_sequence=['#FFD1D1']
+                color_discrete_sequence=['#FFD1D1'] # สีชมพูตามรูป image_337af4
             )
             
             fig.update_traces(
                 textposition='outside',
-                width=0.5 # ปรับให้แท่งกราฟบางลง (Compact)
+                width=0.6 # ทำให้แท่งกราฟบางลง ดู Compact
             )
             
             fig.update_layout(
                 xaxis_ticksuffix="%", 
-                height=max(400, len(df_latest) * 50), # ปรับความสูงตามจำนวนงาน
+                height=max(400, len(df_latest) * 45), 
                 yaxis_title="",
-                bargap=0.4, # เพิ่มช่องว่างระหว่างกลุ่มให้ดูสบายตา
-                margin=dict(l=200), # เว้นพื้นที่ด้านซ้ายสำหรับ 2 คอลัมน์
-                yaxis=dict(autorange="reversed") # เรียงจากบนลงล่างตามข้อมูลล่าสุด
+                bargap=0.4,
+                margin=dict(l=250), # เพิ่มพื้นที่ด้านซ้ายสำหรับชื่อที่ยาวขึ้น
+                # ใช้ฟอนต์แบบคงที่ (Monospace) เพื่อให้คอลัมน์ตรงกันเป๊ะ
+                yaxis=dict(
+                    autorange="reversed",
+                    tickfont=dict(family="Courier New, monospace", size=14)
+                )
             )
             
             st.plotly_chart(fig, use_container_width=True)
 
-            # Table & Export
+            # Raw Data & Gallery
             st.divider()
-            st.subheader("📋 Raw data table")
+            st.subheader("📋 Raw Data Table")
             st.dataframe(df_filtered[['created_at', 'task_name', 'status', 'update_by']], use_container_width=True)
 
-            # Gallery
             st.divider()
             st.subheader("📸 Photo Progress")
             for task in df_latest['task_name'].unique():
@@ -137,6 +136,6 @@ else:
                             st.image(row['image_url'], use_container_width=True)
                             st.caption(f"{row['created_at'].strftime('%d/%m/%y %H:%M')}")
         else:
-            st.warning("No data found in selected range")
+            st.warning("No data found.")
     else:
-        st.info("No data available")
+        st.info("No data available.")
