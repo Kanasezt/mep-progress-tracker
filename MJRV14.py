@@ -67,7 +67,16 @@ def show_upload_form():
             st.info(f"🔍 Current progress is {current_progress}% by \"{previous_updater}\"")
 
     with st.form("progress_form", clear_on_submit=True):
-        staff_list = ["", "Autapol", "Suppawat", "Jirapat", "Puwanai", "Anu", "Chatchai(Art)", "Chatchai(P'Pok)", "Pimchanok"]
+        staff_list = [
+    "", "Puwanai Torpradit", "Zhangxi (Sea)",
+    "Puripat Nammontree", "Ravicha Thaisiam", "Kraiwut Chaiyarak",
+    "Sakda Suwan", "Thanadol Chanpattanakij", "Thanakit Thundon",
+    "Anu Yaemsajja", "Chawalit Posrima", "Amnat Pagamas",
+    "Thotsapon Sripornwong", "Tanupat mongkholkan", "Putthipong Niyomkitjakankul",
+    "Ekkapol Tangngamsakul", "Natthaphat Suwanmanee", "Kantapon Phasee",
+    "Chatchai Sripradoo", "Chatchai Chanprasert", "Jirapat Phobtavorn",
+    "Thanadon Tuydoi (Tontan)", "Pimchanok Janjamsai"
+    ]
         update_by = st.selectbox("Select Your Name", options=staff_list)
         status = st.number_input("Progress (%)", min_value=0, max_value=100, value=int(current_progress))
         uploaded_file = st.file_uploader("Photo Progress", type=['jpg', 'png', 'jpeg'])
@@ -179,3 +188,4 @@ else:
                                     st.error("Image Error")
             else: st.warning("No data found.")
         else: st.info("No data available.")
+
