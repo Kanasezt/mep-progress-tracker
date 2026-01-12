@@ -15,15 +15,33 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="MEP Tracker V30 Admin", layout="wide")
+st.set_page_config(page_title="MEP Tracker V31 Admin", layout="wide")
 
-# --- CSS สำหรับ iPhone (Responsive Fix) ---
+# --- CSS สำหรับ iPhone & UI Elements ---
 st.markdown("""
     <style>
     .block-container { padding-top: 1.5rem !important; padding-bottom: 1rem !important; padding-left: 0.8rem !important; padding-right: 0.8rem !important; }
     .stPlotlyChart { width: 100% !important; }
     @media (max-width: 640px) { div.stButton > button { width: 100% !important; } }
     .stTextInput, .stSelectbox, .stNumberInput { width: 100% !important; }
+    
+    /* สไตล์ปุ่ม Dash Board มุมขวาบน */
+    .dashboard-link {
+        float: right;
+        text-decoration: none;
+        background-color: #262730;
+        color: #ff4b4b !important;
+        padding: 8px 15px;
+        border-radius: 10px;
+        border: 1px solid #ff4b4b;
+        font-weight: bold;
+        font-size: 14px;
+        transition: 0.3s;
+    }
+    .dashboard-link:hover {
+        background-color: #ff4b4b;
+        color: white !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -53,12 +71,20 @@ if not df_raw.empty:
 
 is_upload_only = st.query_params.get("page") == "upload"
 
-# --- 4. ฟังก์ชันบันทึกข้อมูล ---
+# --- 4. ฟังก์ชันบันทึกข้อมูล (เพิ่มปุ่ม Dashboard มุมขวา) ---
 def show_upload_form():
-    st.header("🏗️ Update Progress")
+    # ส่วนหัวและปุ่ม View Dashboard
+    col_title, col_btn = st.columns([3, 1])
+    with col_title:
+        st.header("🏗️ Update Progress")
+    with col_btn:
+        # สร้าง Link กลับไปหน้า Dashboard หลัก (ลบ query param ออก)
+        st.markdown('<br><a href="/" target="_self" class="dashboard-link">📊 Dash Board</a>', unsafe_allow_html=True)
+
     task_name = st.text_input("Task name / Code name (MEP Task)", key="task_input_key")
     current_progress = 0
     previous_updater = "N/A"
+    
     if task_name and not df_raw.empty:
         last_record = df_raw[df_raw['task_name'] == task_name]
         if not last_record.empty:
@@ -68,18 +94,19 @@ def show_upload_form():
 
     with st.form("progress_form", clear_on_submit=True):
         staff_list = [
-    "", "Puwanai Torpradit", "Zhangxi (Sea)",
-    "Puripat Nammontree", "Ravicha Thaisiam", "Kraiwut Chaiyarak",
-    "Sakda Suwan", "Thanadol Chanpattanakij", "Thanakit Thundon",
-    "Anu Yaemsajja", "Chawalit Posrima", "Amnat Pagamas",
-    "Thotsapon Sripornwong", "Tanupat mongkholkan", "Putthipong Niyomkitjakankul",
-    "Ekkapol Tangngamsakul", "Natthaphat Suwanmanee", "Kantapon Phasee",
-    "Chatchai Sripradoo", "Chatchai Chanprasert", "Jirapat Phobtavorn",
-    "Thanadon Tuydoi (Tontan)", "Pimchanok Janjamsai"
-    ]
+            "", "Puwanai Torpradit", "Zhangxi (Sea)", "Puripat Nammontree", 
+            "Ravicha Thaisiam", "Kraiwut Chaiyarak", "Sakda Suwan", 
+            "Thanadol Chanpattanakij", "Thanakit Thundon", "Anu Yaemsajja", 
+            "Chawalit Posrima", "Amnat Pagamas", "Thotsapon Sripornwong", 
+            "Tanupat mongkholkan", "Putthipong Niyomkitjakankul", "Ekkapol Tangngamsakul", 
+            "Natthaphat Suwanmanee", "Kantapon Phasee", "Chatchai Sripradoo", 
+            "Chatchai Chanprasert", "Jirapat Phobtavorn", "Thanadon Tuydoi (Tontan)", 
+            "Pimchanok Janjamsai"
+        ]
         update_by = st.selectbox("Select Your Name", options=staff_list)
         status = st.number_input("Progress (%)", min_value=0, max_value=100, value=int(current_progress))
         uploaded_file = st.file_uploader("Photo Progress", type=['jpg', 'png', 'jpeg'])
+        
         if st.form_submit_button("Submit Progress"):
             if task_name and update_by:
                 image_url = ""
@@ -87,7 +114,7 @@ def show_upload_form():
                     file_name = f"{uuid.uuid4()}.jpg"
                     supabase.storage.from_('images').upload(file_name, uploaded_file.read())
                     image_url = supabase.storage.from_('images').get_public_url(file_name)
-                # บันทึกข้อมูล
+                
                 data = {"task_name": task_name, "update_by": update_by, "status": status, "image_url": image_url}
                 supabase.table("construction_progress").insert(data).execute()
                 st.success("Recorded!")
@@ -116,7 +143,7 @@ else:
             df_filtered = df_raw[mask].copy()
 
             if not df_filtered.empty:
-                # กราฟ
+                # 5.1 Chart Fix Layout
                 df_latest = df_filtered.sort_values('created_at', ascending=False).drop_duplicates('task_name')
                 df_latest['display_label'] = df_latest.apply(lambda x: f"{x['update_by'] : <12} | {x['task_name']}", axis=1)
 
@@ -132,11 +159,9 @@ else:
                 )
                 st.plotly_chart(fig, use_container_width=True)
 
-                # --- 6. Admin Panel (ลำดับใหม่ตามคำขอ) ---
+                # --- 6. Admin Panel (Sequence Update) ---
                 st.divider()
                 st.subheader("🔐 Admin Control Panel (Edit / Delete)")
-                
-                # เรียงลำดับ List คอลัมน์ใหม่ที่นี่
                 edited_df = st.data_editor(
                     df_filtered[['id', 'task_name', 'update_by', 'status', 'image_url', 'created_at']],
                     column_config={
@@ -145,37 +170,25 @@ else:
                         "update_by": st.column_config.TextColumn("Name"),
                         "status": st.column_config.NumberColumn("Progress %", min_value=0, max_value=100),
                         "image_url": st.column_config.LinkColumn("Photo Link"),
-                        "created_at": st.column_config.DatetimeColumn("Date Time (Created At)", disabled=True)
+                        "created_at": st.column_config.DatetimeColumn("Date Time", disabled=True)
                     },
-                    key="admin_editor",
-                    use_container_width=True,
-                    num_rows="dynamic"
+                    key="admin_editor", use_container_width=True, num_rows="dynamic"
                 )
 
-                if st.button("💾 Save All Changes", type="primary"):
-                    for index, row in edited_df.iterrows():
+                if st.button("💾 Save Changes", type="primary"):
+                    for _, row in edited_df.iterrows():
                         supabase.table("construction_progress").update({
-                            "task_name": row['task_name'], 
-                            "update_by": row['update_by'],
-                            "status": row['status'], 
-                            "image_url": row['image_url']
+                            "task_name": row['task_name'], "update_by": row['update_by'],
+                            "status": row['status'], "image_url": row['image_url']
                         }).eq("id", row['id']).execute()
-                    st.success("Updates saved successfully!")
+                    st.success("Updates saved!")
                     st.rerun()
 
-                st.divider()
-                id_to_delete = st.selectbox("Select ID to Delete", options=df_filtered['id'].tolist(), 
-                                            format_func=lambda x: f"ID: {x} | {df_filtered[df_filtered['id']==x]['task_name'].values[0]}")
-                if st.button(f"🗑️ Delete Record {id_to_delete}"):
-                    supabase.table("construction_progress").delete().eq("id", id_to_delete).execute()
-                    st.rerun()
-
-                # --- 7. Gallery (Fix Error) ---
+                # --- 7. Gallery (Safety Check) ---
                 st.divider()
                 st.subheader("📸 Photo Progress")
                 for task in df_latest['task_name'].unique():
-                    img_data = df_filtered[(df_filtered['task_name'] == task) & 
-                                           (df_filtered['image_url'].str.startswith('http', na=False))]
+                    img_data = df_filtered[(df_filtered['task_name'] == task) & (df_filtered['image_url'].str.startswith('http', na=False))]
                     if not img_data.empty:
                         st.markdown(f"📍 **Task: {task}**")
                         cols = st.columns(5)
@@ -184,8 +197,6 @@ else:
                                 try:
                                     st.image(row['image_url'], use_container_width=True)
                                     st.caption(f"{row['created_at'].strftime('%d/%m/%y %H:%M')}")
-                                except:
-                                    st.error("Image Error")
+                                except: st.error("Image Error")
             else: st.warning("No data found.")
         else: st.info("No data available.")
-
