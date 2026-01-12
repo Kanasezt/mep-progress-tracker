@@ -15,17 +15,33 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="MEP Tracker V34", layout="wide")
+st.set_page_config(page_title="MEP Tracker V35", layout="wide")
 
-# --- CSS Styling ---
+# --- CSS Styling (ปรับปรุงปุ่มตามสั่ง) ---
 st.markdown("""
     <style>
     .block-container { padding-top: 1.5rem !important; padding-bottom: 1rem !important; padding-left: 0.8rem !important; padding-right: 0.8rem !important; }
     .stPlotlyChart { width: 100% !important; }
     @media (max-width: 640px) { div.stButton > button { width: 100% !important; } }
+    
+    /* ปุ่ม View Dashboard พื้นแดง ตัวขาว ไม่มีเส้นใต้ */
     .dashboard-link {
-        float: right; text-decoration: none; background-color: #262730; color: #ff4b4b !important;
-        padding: 8px 15px; border-radius: 10px; border: 1px solid #ff4b4b; font-weight: bold; font-size: 14px;
+        float: right;
+        text-decoration: none !important; /* ไม่มีเส้นใต้ */
+        background-color: #FF4B4B; /* พื้นสีแดง */
+        color: white !important; /* ตัวหนังสือสีขาว */
+        padding: 10px 20px;
+        border-radius: 8px; /* ความโค้ง */
+        font-weight: bold;
+        font-size: 14px;
+        display: inline-block;
+        border: none;
+        transition: 0.3s;
+    }
+    .dashboard-link:hover {
+        background-color: #FF3333;
+        color: white !important;
+        text-decoration: none !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -42,6 +58,7 @@ def show_upload_form(show_dash_btn=False):
     col_t, col_b = st.columns([3, 1])
     with col_t: st.header("🏗️ Update Progress")
     if show_dash_btn:
+        # ปุ่มแบบใหม่ พื้นแดง ตัวขาว
         with col_b: st.markdown('<br><a href="/?page=dashboard" target="_self" class="dashboard-link">📊 View Dashboard</a>', unsafe_allow_html=True)
 
     task_name = st.text_input("Task name / Code name (MEP Task)", key="task_input_key")
@@ -69,7 +86,7 @@ def show_upload_form(show_dash_btn=False):
                 st.success("Recorded!"); st.rerun()
             else: st.error("Please fill Name and Task")
 
-# --- 4. Main App ---
+# --- 4. Main App Logic ---
 page = st.query_params.get("page", "dashboard")
 
 if page == "upload":
@@ -92,14 +109,14 @@ else:
         st.markdown('<a href="/?page=upload" target="_self" style="color:#ff4b4b; text-decoration:none;">⬅️ Back to Upload Photo</a>', unsafe_allow_html=True)
 
     c1, c2 = st.columns(2)
-    start_d, end_d = c1.date_input("From", datetime.now()), c2.date_input("To", datetime.now())
+    start_d, end_d = c1.date_input("From date", datetime.now()), c2.date_input("To date", datetime.now())
 
     if not df_raw.empty:
         mask = (df_raw['created_at'].dt.date >= start_d) & (df_raw['created_at'].dt.date <= end_d)
         df_f = df_raw[mask].copy()
 
         if not df_f.empty:
-            # --- กราฟรูปแบบเดิม ---
+            # --- Bar Chart รูปแบบเดิมเป๊ะ ---
             df_l = df_f.sort_values('created_at', ascending=False).drop_duplicates('task_name')
             df_l['display_label'] = df_l.apply(lambda x: f"{x['update_by'] : <12} | {x['task_name']}", axis=1)
             st.subheader("📊 Progress Overview")
@@ -107,7 +124,7 @@ else:
             fig.update_layout(xaxis_ticksuffix="%", height=max(400, len(df_l)*35), yaxis_title="", margin=dict(l=280), yaxis=dict(autorange="reversed", tickfont=dict(family="Calibri", size=16)))
             st.plotly_chart(fig, use_container_width=True)
 
-            # --- แกลเลอรี่ ---
+            # --- Gallery ---
             st.divider(); st.subheader("📸 Photo Progress")
             for t in df_l['task_name'].unique():
                 imgs = df_f[(df_f['task_name'] == t) & (df_f['image_url'].str.startswith('http', na=False))]
@@ -117,10 +134,9 @@ else:
                     for i, (_, r) in enumerate(imgs.iterrows()):
                         with cols[i%5]: st.image(r['image_url'], use_container_width=True); st.caption(r['created_at'].strftime('%d/%m %H:%M'))
 
-            # --- 🛠️ Admin Panel (แก้ไขเรื่อง ID ไม่ตรง) ---
+            # --- Admin Panel (Fix ID Mismatch) ---
             if st.session_state.admin_logged_in:
                 st.divider(); st.subheader("🛠️ Admin Panel (Edit/Delete)")
-                # แก้ไข: ให้โชว์คอลัมน์ ID จริงจากเบส และปิดการแสดง Index ของตารางเอง
                 edited_df = st.data_editor(
                     df_f[['id', 'task_name', 'update_by', 'status', 'image_url', 'created_at']],
                     column_config={
@@ -132,14 +148,12 @@ else:
                 if st.button("💾 Save Changes", type="primary"):
                     for _, r in edited_df.iterrows():
                         supabase.table("construction_progress").update({"task_name":r['task_name'], "update_by":r['update_by'], "status":r['status'], "image_url":r['image_url']}).eq("id", r['id']).execute()
-                    st.success("Updated!"); st.rerun()
+                    st.success("Saved!"); st.rerun()
 
-                # แก้ไข: Selectbox สำหรับลบ ให้แสดง ID พร้อมชื่อ Task ให้ชัดเจน
                 st.write("---")
                 id_list = df_f.sort_values('id', ascending=False)
                 del_id = st.selectbox("Select Record to Delete", options=id_list['id'].tolist(), 
-                                     format_func=lambda x: f"ID: {x} | {id_list[id_list['id']==x]['task_name'].values[0]} ({id_list[id_list['id']==x]['update_by'].values[0]})")
+                                     format_func=lambda x: f"ID: {x} | {id_list[id_list['id']==x]['task_name'].values[0]}")
                 if st.button(f"🗑️ Confirm Delete ID: {del_id}"):
                     supabase.table("construction_progress").delete().eq("id", del_id).execute()
                     st.rerun()
-        else: st.warning("No data.")
