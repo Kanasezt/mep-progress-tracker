@@ -15,33 +15,31 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="MEP Tracker V35", layout="wide")
+st.set_page_config(page_title="MEP Tracker V36", layout="wide")
 
-# --- CSS Styling (ปรับปรุงปุ่มตามสั่ง) ---
+# --- CSS Styling ---
 st.markdown("""
     <style>
     .block-container { padding-top: 1.5rem !important; padding-bottom: 1rem !important; padding-left: 0.8rem !important; padding-right: 0.8rem !important; }
     .stPlotlyChart { width: 100% !important; }
     @media (max-width: 640px) { div.stButton > button { width: 100% !important; } }
     
-    /* ปุ่ม View Dashboard พื้นแดง ตัวขาว ไม่มีเส้นใต้ */
+    /* ปุ่ม View Dashboard (แดง) */
     .dashboard-link {
-        float: right;
-        text-decoration: none !important; /* ไม่มีเส้นใต้ */
-        background-color: #FF4B4B; /* พื้นสีแดง */
-        color: white !important; /* ตัวหนังสือสีขาว */
-        padding: 10px 20px;
-        border-radius: 8px; /* ความโค้ง */
-        font-weight: bold;
-        font-size: 14px;
-        display: inline-block;
-        border: none;
-        transition: 0.3s;
+        float: right; text-decoration: none !important; background-color: #FF4B4B;
+        color: white !important; padding: 10px 20px; border-radius: 8px;
+        font-weight: bold; font-size: 14px; display: inline-block; border: none;
     }
-    .dashboard-link:hover {
-        background-color: #FF3333;
+    
+    /* ✅ แก้ไขสีปุ่ม Submit Progress เป็นสีน้ำเงิน (Blue) */
+    div.stButton > button[kind="primaryFormSubmit"], 
+    .stForm submit_button > button {
+        background-color: #007BFF !important; 
         color: white !important;
-        text-decoration: none !important;
+        border: none !important;
+    }
+    div.stButton > button[kind="primaryFormSubmit"]:hover {
+        background-color: #0056b3 !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -58,7 +56,6 @@ def show_upload_form(show_dash_btn=False):
     col_t, col_b = st.columns([3, 1])
     with col_t: st.header("🏗️ Update Progress")
     if show_dash_btn:
-        # ปุ่มแบบใหม่ พื้นแดง ตัวขาว
         with col_b: st.markdown('<br><a href="/?page=dashboard" target="_self" class="dashboard-link">📊 View Dashboard</a>', unsafe_allow_html=True)
 
     task_name = st.text_input("Task name / Code name (MEP Task)", key="task_input_key")
@@ -75,6 +72,8 @@ def show_upload_form(show_dash_btn=False):
         u_by = st.selectbox("Select Your Name", options=staff_list)
         stat = st.number_input("Progress (%)", min_value=0, max_value=100, value=int(current_p))
         up_file = st.file_uploader("Photo Progress", type=['jpg', 'png', 'jpeg'])
+        
+        # ปุ่มนี้จะเปลี่ยนเป็นสีน้ำเงินตาม CSS ด้านบนครับ
         if st.form_submit_button("Submit Progress"):
             if task_name and u_by:
                 img_url = ""
@@ -92,6 +91,7 @@ page = st.query_params.get("page", "dashboard")
 if page == "upload":
     show_upload_form(show_dash_btn=True)
 else:
+    # --- Sidebar Admin ---
     with st.sidebar:
         if "admin_logged_in" not in st.session_state: st.session_state.admin_logged_in = False
         if not st.session_state.admin_logged_in:
@@ -116,7 +116,7 @@ else:
         df_f = df_raw[mask].copy()
 
         if not df_f.empty:
-            # --- Bar Chart รูปแบบเดิมเป๊ะ ---
+            # --- Bar Chart ---
             df_l = df_f.sort_values('created_at', ascending=False).drop_duplicates('task_name')
             df_l['display_label'] = df_l.apply(lambda x: f"{x['update_by'] : <12} | {x['task_name']}", axis=1)
             st.subheader("📊 Progress Overview")
@@ -134,15 +134,12 @@ else:
                     for i, (_, r) in enumerate(imgs.iterrows()):
                         with cols[i%5]: st.image(r['image_url'], use_container_width=True); st.caption(r['created_at'].strftime('%d/%m %H:%M'))
 
-            # --- Admin Panel (Fix ID Mismatch) ---
+            # --- Admin Panel ---
             if st.session_state.admin_logged_in:
-                st.divider(); st.subheader("🛠️ Admin Panel (Edit/Delete)")
+                st.divider(); st.subheader("🛠️ Admin Panel")
                 edited_df = st.data_editor(
                     df_f[['id', 'task_name', 'update_by', 'status', 'image_url', 'created_at']],
-                    column_config={
-                        "id": st.column_config.NumberColumn("Real ID", disabled=True), 
-                        "created_at": st.column_config.DatetimeColumn("Date Time", disabled=True)
-                    },
+                    column_config={"id": st.column_config.NumberColumn("Real ID", disabled=True), "created_at": st.column_config.DatetimeColumn("Date Time", disabled=True)},
                     hide_index=True, use_container_width=True
                 )
                 if st.button("💾 Save Changes", type="primary"):
@@ -150,10 +147,7 @@ else:
                         supabase.table("construction_progress").update({"task_name":r['task_name'], "update_by":r['update_by'], "status":r['status'], "image_url":r['image_url']}).eq("id", r['id']).execute()
                     st.success("Saved!"); st.rerun()
 
-                st.write("---")
-                id_list = df_f.sort_values('id', ascending=False)
-                del_id = st.selectbox("Select Record to Delete", options=id_list['id'].tolist(), 
-                                     format_func=lambda x: f"ID: {x} | {id_list[id_list['id']==x]['task_name'].values[0]}")
+                del_id = st.selectbox("Select Record to Delete", options=df_f['id'].tolist())
                 if st.button(f"🗑️ Confirm Delete ID: {del_id}"):
                     supabase.table("construction_progress").delete().eq("id", del_id).execute()
                     st.rerun()
