@@ -15,7 +15,7 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="MEP Tracker V43", layout="wide")
+st.set_page_config(page_title="MEP Tracker V44", layout="wide")
 
 # --- CSS Styling ---
 st.markdown("""
@@ -110,21 +110,21 @@ else:
             
             st.subheader("📊 Progress Overview")
             
-            # ✅ แก้ไขจุดนี้: ลบ text= ออกให้เกลี้ยง เพื่อไม่ให้มีค่าเก่าซ้อน
+            # ✅ บรรทัดนี้ต้องคลีนที่สุด (ไม่มี text=)
             fig = px.bar(df_latest, x='status', y='display_label', orientation='h', 
                          range_x=[0, 125], color_discrete_sequence=['#FFD1D1'])
             
-            # ✅ สั่งแสดงผล % ใหม่เพียงชั้นเดียว
+            # ✅ ใช้คำสั่ง text= เพื่อคุมรูปแบบสตริงเองโดยตรง ไม่ผ่าน template
             fig.update_traces(
-                texttemplate='%{x}%',    # แสดงแค่ค่า X และ %
-                textposition='outside',  # อยู่นอกแท่งกราฟ
-                textfont_size=22,        # ฟอนต์ใหญ่ขึ้น
-                cliponaxis=False         # กันตัวเลขหาย
+                text=df_latest['status'].apply(lambda x: f"{x}%"), 
+                textposition='outside', 
+                textfont_size=22, 
+                cliponaxis=False 
             )
 
             fig.update_layout(
                 xaxis_ticksuffix="%", 
-                height=max(400, len(df_latest)*50), # เพิ่มความสูงต่อแถวให้พอดีกับฟอนต์
+                height=max(400, len(df_latest)*50), 
                 yaxis_title="", 
                 margin=dict(l=280, r=60, t=20, b=20), 
                 yaxis=dict(autorange="reversed", tickfont=dict(family="Calibri", size=16))
