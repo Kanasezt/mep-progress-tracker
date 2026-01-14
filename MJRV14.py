@@ -37,7 +37,7 @@ st.markdown(f"""
     .dashboard-link {{
         float: right; text-decoration: none !important; background-color: #FF4B4B;
         color: white !important; padding: 10px 20px; border-radius: 8px;
-        font-weight: bold; font-size: 14px; display: inline-block;
+        font-weight: bold; font-size: 16px; display: outline-block;
     }}
 
     /* ✅ บังคับสีปุ่ม Submit Progress เป็นสีน้ำเงิน (Blue) */
@@ -158,3 +158,4 @@ else:
                 if st.button(f"🗑️ Confirm Delete ID: {del_id}"):
                     supabase.table("construction_progress").delete().eq("id", del_id).execute()
                     st.rerun()
+
