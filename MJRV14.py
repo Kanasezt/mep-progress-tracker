@@ -15,7 +15,7 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="MEP Tracker V41", layout="wide")
+st.set_page_config(page_title="MEP Tracker V42", layout="wide")
 
 # --- CSS Styling ---
 st.markdown("""
@@ -109,16 +109,15 @@ else:
             df_latest['display_label'] = df_latest.apply(lambda x: f"{x['update_by'] : <12} | {x['task_name']}", axis=1)
             
             st.subheader("📊 Progress Overview")
-            # บังคับ range_x ให้กว้างขึ้นเพื่อให้เลข % ที่อยู่ข้างนอกไม่หลุดขอบ
+            # ✅ แก้ไขจุดนี้: เอา text= ออกเพื่อให้แสดงผลแค่ชั้นเดียวผ่าน update_traces
             fig = px.bar(df_latest, x='status', y='display_label', orientation='h', 
                          range_x=[0, 125], color_discrete_sequence=['#FFD1D1'])
             
-            # ✅ แก้ไขตรงนี้: เอาเลขออกนอก Bar และขยายฟอนต์
             fig.update_traces(
                 texttemplate='%{x}%', 
                 textposition='outside', 
-                textfont_size=20, # ขนาดฟอนต์ใหญ่สะใจ
-                cliponaxis=False  # ป้องกันเลขโดนตัดถ้าอยู่ใกล้ขอบ
+                textfont_size=20, 
+                cliponaxis=False 
             )
 
             fig.update_layout(
