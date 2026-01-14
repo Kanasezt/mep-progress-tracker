@@ -15,9 +15,9 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="MEP Tracker V40", layout="wide")
+st.set_page_config(page_title="MEP Tracker V41", layout="wide")
 
-# --- CSS Styling (คงสีปุ่มน้ำเงินและแดงไว้) ---
+# --- CSS Styling ---
 st.markdown("""
     <style>
     .block-container { padding-top: 1.5rem !important; padding-bottom: 1rem !important; }
@@ -26,7 +26,6 @@ st.markdown("""
         color: white !important; padding: 10px 20px; border-radius: 8px;
         font-weight: bold; font-size: 14px; display: inline-block; border: none;
     }
-    /* บังคับปุ่ม Submit เป็นสีน้ำเงิน */
     div[data-testid="stFormSubmitButton"] > button {
         background-color: #0047AB !important; 
         color: white !important;
@@ -39,11 +38,9 @@ st.markdown("""
 response = supabase.table("construction_progress").select("*").execute()
 df_raw = pd.DataFrame(response.data)
 
-# เตรียมข้อมูลเบื้องต้น
-min_date = datetime.now() # ค่าเผื่อไว้ถ้าไม่มีข้อมูล
+min_date = datetime.now().date()
 if not df_raw.empty:
     df_raw['created_at'] = pd.to_datetime(df_raw['created_at']).dt.tz_localize(None)
-    # ✅ หาค่าวันที่เก่าที่สุดในฐานข้อมูลเพื่อตั้งเป็น Default
     min_date = df_raw['created_at'].min().date()
 
 # --- 3. Function: Upload Form ---
@@ -99,9 +96,8 @@ else:
     if not st.session_state.admin_logged_in:
         st.markdown('<a href="/?page=upload" target="_self" style="color:#ff4b4b; text-decoration:none;">⬅️ Back to Upload Photo</a>', unsafe_allow_html=True)
 
-    # --- ✅ แก้ไขจุดที่ 1: ตั้งค่า From date เป็นเริ่มวันที่เก่าที่สุด ---
     c1, c2 = st.columns(2)
-    start_d = c1.date_input("From date", min_date) # ดึงค่าวันที่เก่าสุดจากฐานข้อมูลมาใส่ตรงนี้
+    start_d = c1.date_input("From date", min_date) 
     end_d = c2.date_input("To date", datetime.now())
 
     if not df_raw.empty:
@@ -109,20 +105,27 @@ else:
         df_f = df_raw[mask].copy()
 
         if not df_f.empty:
-            # --- ✅ แก้ไขจุดที่ 2: จัดระเบียบ Bar Chart ให้แสดงข้อมูลล่าสุด ---
-            # เรียงจากล่าสุดไปเก่าสุดเพื่อดึงข้อมูล Progress ล่าสุดของแต่ละ Task
             df_latest = df_f.sort_values('created_at', ascending=False).drop_duplicates('task_name')
             df_latest['display_label'] = df_latest.apply(lambda x: f"{x['update_by'] : <12} | {x['task_name']}", axis=1)
             
             st.subheader("📊 Progress Overview")
+            # บังคับ range_x ให้กว้างขึ้นเพื่อให้เลข % ที่อยู่ข้างนอกไม่หลุดขอบ
             fig = px.bar(df_latest, x='status', y='display_label', orientation='h', 
-                         text=df_latest['status'].apply(lambda x: f'{x}%'), 
-                         range_x=[0, 115], color_discrete_sequence=['#FFD1D1'])
+                         range_x=[0, 125], color_discrete_sequence=['#FFD1D1'])
             
-            # บังคับการแสดงผลให้ตัวใหม่ที่สุดอยู่ด้านบน
-            fig.update_layout(xaxis_ticksuffix="%", height=max(400, len(df_latest)*40), 
-                              yaxis_title="", margin=dict(l=280), 
-                              yaxis=dict(autorange="reversed", tickfont=dict(family="Calibri", size=16)))
+            # ✅ แก้ไขตรงนี้: เอาเลขออกนอก Bar และขยายฟอนต์
+            fig.update_traces(
+                texttemplate='%{x}%', 
+                textposition='outside', 
+                textfont_size=20, # ขนาดฟอนต์ใหญ่สะใจ
+                cliponaxis=False  # ป้องกันเลขโดนตัดถ้าอยู่ใกล้ขอบ
+            )
+
+            fig.update_layout(
+                xaxis_ticksuffix="%", height=max(400, len(df_latest)*45), 
+                yaxis_title="", margin=dict(l=280, r=60), 
+                yaxis=dict(autorange="reversed", tickfont=dict(family="Calibri", size=16))
+            )
             st.plotly_chart(fig, use_container_width=True)
 
             # --- Gallery ---
