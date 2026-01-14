@@ -37,7 +37,7 @@ st.markdown(f"""
     .dashboard-link {{
         float: right; text-decoration: none !important; background-color: #FF4B4B;
         color: white !important; padding: 10px 20px; border-radius: 8px;
-        font-weight: bold; font-size: 16px; display: outline-block;
+        font-weight: bold; font-size: 14px; display: inline-block;
     }}
 
     /* ✅ บังคับสีปุ่ม Submit Progress เป็นสีน้ำเงิน (Blue) */
@@ -128,7 +128,7 @@ else:
             df_l['display_label'] = df_l.apply(lambda x: f"{x['update_by'] : <12} | {x['task_name']}", axis=1)
             st.subheader("📊 Progress Overview")
             fig = px.bar(df_l, x='status', y='display_label', orientation='h', text=df_l['status'].apply(lambda x: f'{x}%'), range_x=[0, 115], color_discrete_sequence=['#FFD1D1'])
-            fig.update_layout(xaxis_ticksuffix="%", height=max(400, len(df_l)*35), yaxis_title="", margin=dict(l=280), yaxis=dict(autorange="reversed", tickfont=dict(family="Calibri", size=16)))
+            fig.update_layout(xaxis_ticksuffix="%", height=max(400, len(df_l)*35), yaxis_title="", margin=dict(l=280), yaxis=dict(autorange="reversed", tickfont=dict(family="Calibri", size=18)))
             st.plotly_chart(fig, use_container_width=True)
 
             # --- Gallery ---
@@ -158,4 +158,5 @@ else:
                 if st.button(f"🗑️ Confirm Delete ID: {del_id}"):
                     supabase.table("construction_progress").delete().eq("id", del_id).execute()
                     st.rerun()
+
 
