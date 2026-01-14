@@ -15,7 +15,7 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="MEP Tracker V42", layout="wide")
+st.set_page_config(page_title="MEP Tracker V43", layout="wide")
 
 # --- CSS Styling ---
 st.markdown("""
@@ -109,20 +109,24 @@ else:
             df_latest['display_label'] = df_latest.apply(lambda x: f"{x['update_by'] : <12} | {x['task_name']}", axis=1)
             
             st.subheader("📊 Progress Overview")
-            # ✅ แก้ไขจุดนี้: เอา text= ออกเพื่อให้แสดงผลแค่ชั้นเดียวผ่าน update_traces
+            
+            # ✅ แก้ไขจุดนี้: ลบ text= ออกให้เกลี้ยง เพื่อไม่ให้มีค่าเก่าซ้อน
             fig = px.bar(df_latest, x='status', y='display_label', orientation='h', 
                          range_x=[0, 125], color_discrete_sequence=['#FFD1D1'])
             
+            # ✅ สั่งแสดงผล % ใหม่เพียงชั้นเดียว
             fig.update_traces(
-                texttemplate='%{x}%', 
-                textposition='outside', 
-                textfont_size=20, 
-                cliponaxis=False 
+                texttemplate='%{x}%',    # แสดงแค่ค่า X และ %
+                textposition='outside',  # อยู่นอกแท่งกราฟ
+                textfont_size=22,        # ฟอนต์ใหญ่ขึ้น
+                cliponaxis=False         # กันตัวเลขหาย
             )
 
             fig.update_layout(
-                xaxis_ticksuffix="%", height=max(400, len(df_latest)*45), 
-                yaxis_title="", margin=dict(l=280, r=60), 
+                xaxis_ticksuffix="%", 
+                height=max(400, len(df_latest)*50), # เพิ่มความสูงต่อแถวให้พอดีกับฟอนต์
+                yaxis_title="", 
+                margin=dict(l=280, r=60, t=20, b=20), 
                 yaxis=dict(autorange="reversed", tickfont=dict(family="Calibri", size=16))
             )
             st.plotly_chart(fig, use_container_width=True)
