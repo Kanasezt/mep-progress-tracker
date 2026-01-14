@@ -15,30 +15,22 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="MEP Tracker V39", layout="wide")
+st.set_page_config(page_title="MEP Tracker V40", layout="wide")
 
-# --- CSS Styling (คงความสวยงามเดิมไว้ครบ) ---
+# --- CSS Styling (คงสีปุ่มน้ำเงินและแดงไว้) ---
 st.markdown("""
     <style>
     .block-container { padding-top: 1.5rem !important; padding-bottom: 1rem !important; }
-    
-    /* ปุ่ม View Dashboard (แดง) */
     .dashboard-link {
         float: right; text-decoration: none !important; background-color: #FF4B4B !important;
         color: white !important; padding: 10px 20px; border-radius: 8px;
         font-weight: bold; font-size: 14px; display: inline-block; border: none;
     }
-
-    /* ✅ ล็อกสีน้ำเงินให้ปุ่ม Submit Progress */
+    /* บังคับปุ่ม Submit เป็นสีน้ำเงิน */
     div[data-testid="stFormSubmitButton"] > button {
         background-color: #0047AB !important; 
         color: white !important;
         border: 1px solid #0047AB !important;
-        padding: 0.5rem 2rem !important;
-    }
-    div[data-testid="stFormSubmitButton"] > button:hover {
-        background-color: #002D62 !important;
-        border-color: #002D62 !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -46,8 +38,13 @@ st.markdown("""
 # --- 2. Data Fetching ---
 response = supabase.table("construction_progress").select("*").execute()
 df_raw = pd.DataFrame(response.data)
+
+# เตรียมข้อมูลเบื้องต้น
+min_date = datetime.now() # ค่าเผื่อไว้ถ้าไม่มีข้อมูล
 if not df_raw.empty:
     df_raw['created_at'] = pd.to_datetime(df_raw['created_at']).dt.tz_localize(None)
+    # ✅ หาค่าวันที่เก่าที่สุดในฐานข้อมูลเพื่อตั้งเป็น Default
+    min_date = df_raw['created_at'].min().date()
 
 # --- 3. Function: Upload Form ---
 def show_upload_form(show_dash_btn=False):
@@ -59,7 +56,6 @@ def show_upload_form(show_dash_btn=False):
     task_name = st.text_input("Task name / Code name (MEP Task)", key="task_input_key")
     current_p = 0
     if task_name and not df_raw.empty:
-        # หาค่าล่าสุดของ Task นั้นๆ
         last_task = df_raw[df_raw['task_name'] == task_name].sort_values('created_at', ascending=False)
         if not last_task.empty:
             current_p = last_task.iloc[0]['status']
@@ -103,22 +99,30 @@ else:
     if not st.session_state.admin_logged_in:
         st.markdown('<a href="/?page=upload" target="_self" style="color:#ff4b4b; text-decoration:none;">⬅️ Back to Upload Photo</a>', unsafe_allow_html=True)
 
+    # --- ✅ แก้ไขจุดที่ 1: ตั้งค่า From date เป็นเริ่มวันที่เก่าที่สุด ---
     c1, c2 = st.columns(2)
-    start_d, end_d = c1.date_input("From date", datetime.now()), c2.date_input("To date", datetime.now())
+    start_d = c1.date_input("From date", min_date) # ดึงค่าวันที่เก่าสุดจากฐานข้อมูลมาใส่ตรงนี้
+    end_d = c2.date_input("To date", datetime.now())
 
     if not df_raw.empty:
         mask = (df_raw['created_at'].dt.date >= start_d) & (df_raw['created_at'].dt.date <= end_d)
         df_f = df_raw[mask].copy()
 
         if not df_f.empty:
-            # --- ✅ FIX: บังคับเรียง Bar Chart จาก ล่าสุดไปเก่าสุด ---
+            # --- ✅ แก้ไขจุดที่ 2: จัดระเบียบ Bar Chart ให้แสดงข้อมูลล่าสุด ---
+            # เรียงจากล่าสุดไปเก่าสุดเพื่อดึงข้อมูล Progress ล่าสุดของแต่ละ Task
             df_latest = df_f.sort_values('created_at', ascending=False).drop_duplicates('task_name')
-            # ตรวจสอบการเรียงเพื่อให้ Newest อยู่บนสุดใน Plotly (ใช้ autorange='reversed' ร่วมกับข้อมูลที่เรียงแล้ว)
             df_latest['display_label'] = df_latest.apply(lambda x: f"{x['update_by'] : <12} | {x['task_name']}", axis=1)
             
             st.subheader("📊 Progress Overview")
-            fig = px.bar(df_latest, x='status', y='display_label', orientation='h', text=df_latest['status'].apply(lambda x: f'{x}%'), range_x=[0, 115], color_discrete_sequence=['#FFD1D1'])
-            fig.update_layout(xaxis_ticksuffix="%", height=max(400, len(df_latest)*40), yaxis_title="", margin=dict(l=280), yaxis=dict(autorange="reversed", tickfont=dict(family="Calibri", size=16)))
+            fig = px.bar(df_latest, x='status', y='display_label', orientation='h', 
+                         text=df_latest['status'].apply(lambda x: f'{x}%'), 
+                         range_x=[0, 115], color_discrete_sequence=['#FFD1D1'])
+            
+            # บังคับการแสดงผลให้ตัวใหม่ที่สุดอยู่ด้านบน
+            fig.update_layout(xaxis_ticksuffix="%", height=max(400, len(df_latest)*40), 
+                              yaxis_title="", margin=dict(l=280), 
+                              yaxis=dict(autorange="reversed", tickfont=dict(family="Calibri", size=16)))
             st.plotly_chart(fig, use_container_width=True)
 
             # --- Gallery ---
@@ -131,7 +135,7 @@ else:
                     for i, (_, r) in enumerate(imgs.iterrows()):
                         with cols[i%5]: st.image(r['image_url'], use_container_width=True); st.caption(r['created_at'].strftime('%d/%m %H:%M'))
 
-            # --- Admin Panel (เรียง ID จากมากไปน้อยให้ตรวจสอบง่าย) ---
+            # --- Admin Panel ---
             if st.session_state.admin_logged_in:
                 st.divider(); st.subheader("🛠️ Admin Panel")
                 df_admin = df_f.sort_values('id', ascending=False)
