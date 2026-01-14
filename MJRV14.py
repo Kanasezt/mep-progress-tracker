@@ -17,45 +17,51 @@ supabase: Client = create_client(URL, KEY)
 
 st.set_page_config(page_title="MEP Tracker V38", layout="wide")
 
-# --- 2. Data Fetching (ย้ายมาไว้ข้างบนเพื่อหาค่า Oldest Date) ---
+# --- CSS Styling (เน้นล็อกสีน้ำเงินให้ปุ่ม Submit) ---
+st.markdown("""
+    <style>
+    .block-container { padding-top: 1.5rem !important; padding-bottom: 1rem !important; }
+    
+    /* 1. ปุ่ม View Dashboard (สีแดง ตัวขาว ไม่มีเส้นใต้) */
+    .dashboard-link {
+        float: right; text-decoration: none !important; background-color: #FF4B4B !important;
+        color: white !important; padding: 10px 20px; border-radius: 8px;
+        font-weight: bold; font-size: 14px; display: inline-block; border: none;
+    }
+
+    /* 2. ✅ บังคับปุ่ม Submit Progress ให้เป็นสีน้ำเงิน (Blue) */
+    /* ใช้ปุ่มที่เป็นหัวใจหลักของ Form */
+    div[data-testid="stFormSubmitButton"] > button {
+        background-color: #0047AB !important; /* Cobalt Blue */
+        color: white !important;
+        border: 1px solid #0047AB !important;
+        padding: 0.5rem 2rem !important;
+        transition: 0.3s !important;
+    }
+    
+    div[data-testid="stFormSubmitButton"] > button:hover {
+        background-color: #002D62 !important; /* Darker Blue */
+        border-color: #002D62 !important;
+        color: white !important;
+    }
+
+    div[data-testid="stFormSubmitButton"] > button:active {
+        background-color: #002D62 !important;
+    }
+    
+    /* 3. ล้างค่าพื้นฐานที่อาจทำให้สีเพี้ยน */
+    div[data-testid="stFormSubmitButton"] > button p {
+        color: white !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- 2. Data Fetching ---
 response = supabase.table("construction_progress").select("*").execute()
 df_raw = pd.DataFrame(response.data)
-oldest_date = datetime.now() # ค่าเผื่อไว้กรณีไม่มีข้อมูล
-
 if not df_raw.empty:
     df_raw['created_at'] = pd.to_datetime(df_raw['created_at']).dt.tz_localize(None)
     df_raw = df_raw.sort_values('created_at', ascending=False)
-    # ✅ หาค่าวันที่เก่าที่สุดจากฐานข้อมูล
-    oldest_date = df_raw['created_at'].min()
-
-# --- CSS Styling (บังคับปุ่ม Submit เป็นสีน้ำเงิน) ---
-st.markdown(f"""
-    <style>
-    .block-container {{ padding-top: 1.5rem !important; }}
-    
-    /* ปุ่ม View Dashboard (แดง) */
-    .dashboard-link {{
-        float: right; text-decoration: none !important; background-color: #FF4B4B;
-        color: white !important; padding: 10px 20px; border-radius: 8px;
-        font-weight: bold; font-size: 14px; display: inline-block;
-    }}
-
-    /* ✅ บังคับสีปุ่ม Submit Progress เป็นสีน้ำเงิน (Blue) */
-    /* ใช้ Selector ที่เจาะจงที่สุดเพื่อไม่ให้โดนทับ */
-    button[kind="primaryFormSubmit"], 
-    .stForm submit_button > button,
-    div.stButton > button:first-child {{
-        background-color: #007BFF !important; 
-        color: white !important;
-        border: none !important;
-        box-shadow: none !important;
-    }}
-    
-    button[kind="primaryFormSubmit"]:hover {{
-        background-color: #0056b3 !important;
-    }}
-    </style>
-""", unsafe_allow_html=True)
 
 # --- 3. Function: Upload Form ---
 def show_upload_form(show_dash_btn=False):
@@ -65,13 +71,12 @@ def show_upload_form(show_dash_btn=False):
         with col_b: st.markdown('<br><a href="/?page=dashboard" target="_self" class="dashboard-link">📊 View Dashboard</a>', unsafe_allow_html=True)
 
     task_name = st.text_input("Task name / Code name (MEP Task)", key="task_input_key")
-    current_p, prev_u = 0, "N/A"
-    
+    current_p = 0
     if task_name and not df_raw.empty:
         last = df_raw[df_raw['task_name'] == task_name]
         if not last.empty:
-            current_p, prev_u = last.iloc[0]['status'], last.iloc[0]['update_by']
-            st.info(f"🔍 Current progress is {current_p}% by \"{prev_u}\"")
+            current_p = last.iloc[0]['status']
+            st.info(f"🔍 Current progress is {current_p}%")
 
     with st.form("progress_form", clear_on_submit=True):
         staff_list = ["", "Puwanai Torpradit", "Zhangxi (Sea)", "Puripat Nammontree", "Ravicha Thaisiam", "Kraiwut Chaiyarak", "Sakda Suwan", "Thanadol Chanpattanakij", "Thanakit Thundon", "Anu Yaemsajja", "Chawalit Posrima", "Amnat Pagamas", "Thotsapon Sripornwong", "Tanupat mongkholkan", "Putthipong Niyomkitjakankul", "Ekkapol Tangngamsakul", "Natthaphat Suwanmanee", "Kantapon Phasee", "Chatchai Sripradoo", "Chatchai Chanprasert", "Jirapat Phobtavorn", "Thanadon Tuydoi (Tontan)", "Pimchanok Janjamsai"]
@@ -79,7 +84,7 @@ def show_upload_form(show_dash_btn=False):
         stat = st.number_input("Progress (%)", min_value=0, max_value=100, value=int(current_p))
         up_file = st.file_uploader("Photo Progress", type=['jpg', 'png', 'jpeg'])
         
-        # ปุ่ม Submit ที่คุณพี่อยากได้สีน้ำเงิน
+        # ปุ่มที่จะกลายเป็นสีน้ำเงินจาก CSS ด้านบน
         if st.form_submit_button("Submit Progress"):
             if task_name and u_by:
                 img_url = ""
@@ -113,22 +118,20 @@ else:
     if not st.session_state.admin_logged_in:
         st.markdown('<a href="/?page=upload" target="_self" style="color:#ff4b4b; text-decoration:none;">⬅️ Back to Upload Photo</a>', unsafe_allow_html=True)
 
-    # ✅ ปรับค่าเริ่มต้น From date เป็นวันที่เก่าที่สุด (Oldest Date)
     c1, c2 = st.columns(2)
-    start_d = c1.date_input("From date", value=oldest_date)
-    end_d = c2.date_input("To date", value=datetime.now())
+    start_d, end_d = c1.date_input("From date", datetime.now()), c2.date_input("To date", datetime.now())
 
     if not df_raw.empty:
         mask = (df_raw['created_at'].dt.date >= start_d) & (df_raw['created_at'].dt.date <= end_d)
         df_f = df_raw[mask].copy()
 
         if not df_f.empty:
-            # --- Bar Chart รูปแบบเดิม ---
+            # --- Bar Chart ---
             df_l = df_f.sort_values('created_at', ascending=False).drop_duplicates('task_name')
             df_l['display_label'] = df_l.apply(lambda x: f"{x['update_by'] : <12} | {x['task_name']}", axis=1)
             st.subheader("📊 Progress Overview")
             fig = px.bar(df_l, x='status', y='display_label', orientation='h', text=df_l['status'].apply(lambda x: f'{x}%'), range_x=[0, 115], color_discrete_sequence=['#FFD1D1'])
-            fig.update_layout(xaxis_ticksuffix="%", height=max(400, len(df_l)*35), yaxis_title="", margin=dict(l=280), yaxis=dict(autorange="reversed", tickfont=dict(family="Calibri", size=18)))
+            fig.update_layout(xaxis_ticksuffix="%", height=max(400, len(df_l)*35), yaxis_title="", margin=dict(l=280), yaxis=dict(autorange="reversed", tickfont=dict(family="Calibri", size=16)))
             st.plotly_chart(fig, use_container_width=True)
 
             # --- Gallery ---
@@ -154,9 +157,7 @@ else:
                         supabase.table("construction_progress").update({"task_name":r['task_name'], "update_by":r['update_by'], "status":r['status'], "image_url":r['image_url']}).eq("id", r['id']).execute()
                     st.success("Saved!"); st.rerun()
 
-                del_id = st.selectbox("Select ID to Delete", options=df_f['id'].tolist())
+                del_id = st.selectbox("Select Record to Delete", options=df_f['id'].tolist())
                 if st.button(f"🗑️ Confirm Delete ID: {del_id}"):
                     supabase.table("construction_progress").delete().eq("id", del_id).execute()
                     st.rerun()
-
-
