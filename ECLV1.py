@@ -16,7 +16,7 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="Issue Escalation V3.9.1", layout="wide")
+st.set_page_config(page_title="Issue Escalation V3.9", layout="wide")
 
 # --- 2. CSS Styling ---
 st.markdown("""
@@ -35,18 +35,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 3. Data Fetching ---
-@st.cache_data(ttl=10) # ลด Cache ลงเพื่อให้เห็นผลลัพธ์การลบทันที
+@st.cache_data(ttl=60)
 def load_data():
     try:
         res = supabase.table("issue_escalation").select("*").order("id", desc=True).execute()
         df_raw = pd.DataFrame(res.data)
         if not df_raw.empty:
             df_raw['created_at'] = pd.to_datetime(df_raw['created_at']).dt.tz_convert('Asia/Bangkok')
-            # ตรวจสอบว่ามี updated_at ไหม ถ้าไม่มีให้ใช้ created_at แทนไปก่อน
-            if 'updated_at' in df_raw.columns:
-                df_raw['updated_at'] = pd.to_datetime(df_raw['updated_at']).dt.tz_convert('Asia/Bangkok')
-            else:
-                df_raw['updated_at'] = df_raw['created_at']
+            df_raw['updated_at'] = pd.to_datetime(df_raw.get('updated_at', df_raw['created_at'])).dt.tz_convert('Asia/Bangkok')
         return df_raw
     except:
         return pd.DataFrame()
@@ -63,7 +59,6 @@ def export_excel_with_images(dataframe):
         
         def calc_status(row):
             c_date = row['created_at']
-            # ถ้าเป็น Closed ให้โชว์วันที่ล่าสุดที่มี (ถ้าไม่มี updated_at ก็จะโชว์วันที่สร้างไปก่อน)
             if row['status'] == 'Closed':
                 return row['updated_at'].strftime('%d-%b-%y'), f"{max(0, (row['updated_at'] - c_date).days)} days"
             return "Processing", f"{max(0, (now_th - c_date).days)} days"
@@ -75,22 +70,28 @@ def export_excel_with_images(dataframe):
         df_final.to_excel(writer, sheet_name='Issue_Report', index=False)
         
         worksheet = writer.sheets['Issue_Report']
-        worksheet.set_column('J:J', 20); worksheet.write(0, 9, 'Image'); worksheet.set_default_row(80)
+        worksheet.set_column('J:J', 20)
+        worksheet.write(0, 9, 'Image')
+        worksheet.set_default_row(80)
+        
         for i, url in enumerate(df_ex['image_url']):
             if url and url.startswith("http"):
                 try:
-                    resp = requests.get(url, timeout=5); img_data = io.BytesIO(resp.content)
-                    worksheet.insert_image(i+1, 9, url, {'image_data': img_data, 'x_scale': 0.12, 'y_scale': 0.12, 'x_offset': 5, 'y_offset': 5})
+                    resp = requests.get(url, timeout=5)
+                    img_data = io.BytesIO(resp.content)
+                    worksheet.insert_image(i + 1, 9, url, {'image_data': img_data, 'x_scale': 0.12, 'y_scale': 0.12, 'x_offset': 5, 'y_offset': 5})
                 except: continue
     return output.getvalue()
 
-# --- 5. Header & Refresh ---
+# --- 5. Header & Refresh Button ---
 col_t, col_r = st.columns([5, 1])
-with col_t: st.title("🚨 Issue Escalation V3.9.1")
+with col_t:
+    st.title("🚨 Issue Escalation V3.9")
 with col_r:
-    st.write("##")
+    st.write("##") # ปรับตำแหน่งปุ่มให้ตรงกับหัวข้อ
     if st.button("🔄 Refresh Data"):
-        st.cache_data.clear(); st.rerun()
+        st.cache_data.clear()
+        st.rerun()
 
 df = load_data()
 
@@ -102,14 +103,16 @@ with st.sidebar:
     if is_admin: st.success("Admin Mode ON ✅")
 
 # --- 7. Cards & Form ---
-if not df.empty:
-    c1, c2, c3 = st.columns(3)
-    op = len(df[df['status'] == 'Open']); cl = len(df[df['status'] == 'Closed']); can = len(df[df['status'] == 'Cancel'])
-    c1.markdown(f"<div class='card-open'>OPEN<span class='val-text'>{op}</span></div>", unsafe_allow_html=True)
-    c2.markdown(f"<div class='card-closed'>CLOSED<span class='val-text'>{cl}</span></div>", unsafe_allow_html=True)
-    c3.markdown(f"<div class='card-cancel'>CANCEL<span class='val-text'>{can}</span></div>", unsafe_allow_html=True)
+c1, c2, c3 = st.columns(3)
+op = len(df[df['status'] == 'Open']) if not df.empty else 0
+cl = len(df[df['status'] == 'Closed']) if not df.empty else 0
+can = len(df[df['status'] == 'Cancel']) if not df.empty else 0
+c1.markdown(f"<div class='card-open'>OPEN<span class='val-text'>{op}</span></div>", unsafe_allow_html=True)
+c2.markdown(f"<div class='card-closed'>CLOSED<span class='val-text'>{cl}</span></div>", unsafe_allow_html=True)
+c3.markdown(f"<div class='card-cancel'>CANCEL<span class='val-text'>{can}</span></div>", unsafe_allow_html=True)
 
 st.divider()
+
 with st.form("issue_form", clear_on_submit=True):
     col_n, col_r = st.columns([2, 1])
     u_name = col_n.text_input("** Fill Name")
@@ -128,7 +131,8 @@ with st.form("issue_form", clear_on_submit=True):
 
 # --- 8. Dashboard ---
 if not df.empty:
-    st.divider(); st.subheader("📋 Dashboard")
+    st.divider()
+    st.subheader("📋 Dashboard")
     f1, f2, f3 = st.columns([2, 1, 1.2])
     search = f1.text_input("🔍 Search Name/Detail")
     f_stat = f2.selectbox("Filter Status", ["All", "Open", "Closed", "Cancel"])
@@ -137,10 +141,10 @@ if not df.empty:
     if search: df_f = df_f[df_f['staff_name'].str.contains(search, case=False, na=False) | df_f['issue_detail'].str.contains(search, case=False, na=False)]
     if f_stat != "All": df_f = df_f[df_f['status'] == f_stat]
 
-    if f3.button("📥 Download Excel"):
+    if f3.button("📥 Download Excel with Photos"):
         with st.spinner("Preparing..."):
             excel_file = export_excel_with_images(df_f)
-            st.download_button("💾 Save Excel", data=excel_file, file_name=f"Report_V391.xlsx")
+            st.download_button("💾 Save Excel", data=excel_file, file_name=f"Report_V39_{datetime.now().strftime('%d%m%Y')}.xlsx")
 
     now_th = datetime.now(timezone(timedelta(hours=7)))
     for i, r in df_f.reset_index(drop=True).iterrows():
@@ -153,15 +157,16 @@ if not df.empty:
                 days = (now_th - r['created_at']).days
                 st.write(f"**Detail:** {r['issue_detail']}")
                 st.markdown(f"Status: **{r['status']}**")
-                st.info(f"📅 Created: {r['created_at'].strftime('%d %b %y %H:%M')}")
-
+                if r['status'] == 'Closed':
+                    st.success(f"✅ Completed | 📅 {r['created_at'].strftime('%d %b %y')} | 🕒 {r['created_at'].strftime('%H:%M:%S')}")
+                else:
+                    st.warning(f"⏳ {max(0, days)} days pending | 📅 {r['created_at'].strftime('%d %b %y')} | 🕒 {r['created_at'].strftime('%H:%M:%S')}")
             with c_admin:
                 if is_admin:
                     new_stat = st.selectbox("Update Status", ["Open", "Closed", "Cancel"], index=["Open", "Closed", "Cancel"].index(r['status']), key=f"st_{r['id']}")
                     b1, b2 = st.columns(2)
                     if b1.button("Confirm ✅", key=f"ok_{r['id']}"):
-                        # ลบ updated_at ออกจากส่วนการ update เพื่อกัน Error
-                        supabase.table("issue_escalation").update({"status": new_stat}).eq("id", r['id']).execute()
+                        supabase.table("issue_escalation").update({"status": new_stat, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", r['id']).execute()
                         st.cache_data.clear(); st.rerun()
                     if b2.button("Delete 🗑️", key=f"del_{r['id']}"):
                         supabase.table("issue_escalation").delete().eq("id", r['id']).execute()
