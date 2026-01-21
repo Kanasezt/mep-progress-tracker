@@ -15,7 +15,7 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="Issue Escalation V3.2", layout="wide")
+st.set_page_config(page_title="Issue Escalation V3.3", layout="wide")
 
 # --- 2. CSS Styling ---
 st.markdown("""
@@ -39,15 +39,16 @@ def load_data():
         res = supabase.table("issue_escalation").select("*").order("created_at", desc=True).execute()
         df_raw = pd.DataFrame(res.data)
         if not df_raw.empty:
-            df_raw['created_at'] = pd.to_datetime(df_raw['created_at'], errors='coerce')
+            # แปลงวันที่ให้เป็น datetime และล้าง Timezone ออกเพื่อป้องกัน ValueError ใน Excel
+            df_raw['created_at'] = pd.to_datetime(df_raw['created_at'], errors='coerce').dt.tz_localize(None)
         return df_raw
     except:
         return pd.DataFrame()
 
 df = load_data()
 
-# --- 4. Main UI ---
-st.title("🚨 Issue Escalation V3.2")
+# --- 4. Main UI Summary ---
+st.title("🚨 Issue Escalation V3.3")
 
 c1, c2, c3 = st.columns(3)
 op = len(df[df['status'] == 'Open']) if not df.empty else 0
@@ -96,15 +97,19 @@ if not df.empty:
     if f_stat != "All":
         df_f = df_f[df_f['status'] == f_stat]
 
-    # Quick Export Excel (No Image Waiting)
+    # --- บรรทัดแก้ไขปัญหา Excel พัง ---
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df_f.to_excel(writer, index=False, sheet_name='Sheet1')
+        # ล้าง timezone ออกอีกครั้งก่อนเขียนไฟล์เพื่อความชัวร์
+        df_export = df_f.copy()
+        for col in df_export.select_dtypes(include=['datetime64[ns, UTC]', 'datetime64[ns]']).columns:
+            df_export[col] = df_export[col].dt.tz_localize(None)
+        df_export.to_excel(writer, index=False, sheet_name='Report')
     
     f3.markdown("<br>", unsafe_allow_html=True)
     f3.download_button("📥 Download Excel", data=output.getvalue(), file_name="report.xlsx", mime="application/vnd.ms-excel")
 
-    now_utc = datetime.now(timezone.utc)
+    now = datetime.now()
     for i, r in df_f.reset_index(drop=True).iterrows():
         with st.container():
             c_img, c_info = st.columns([1, 4])
@@ -114,21 +119,20 @@ if not df.empty:
             with c_info:
                 st.markdown(f"**{r['staff_name']}** | `{r['status']}`")
                 st.write(r['issue_detail'])
-                st.caption(f"🏷️ {r['related_to']} | 📅 {r['created_at'].strftime('%d %b %y') if pd.notnull(r['created_at']) else '-'}")
+                date_display = r['created_at'].strftime('%d %b %y') if pd.notnull(r['created_at']) else "-"
+                st.caption(f"🏷️ {r['related_to']} | 📅 {date_display}")
             st.divider()
 
-# --- 7. Admin Panel (Fixed Login) ---
+# --- 7. Admin Panel (Login Always Available) ---
 with st.sidebar:
     st.header("🔐 Admin Panel")
     pwd = st.text_input("Password", type="password")
     
     if pwd == "pm1234":
         st.success("Admin Logged In")
-        # แสดงเมนู Admin เสมอถ้าใส่รหัสผ่านถูก
         st.write("---")
         if not df.empty:
             id_col = 'id' if 'id' in df.columns else df.columns[0]
-            # แสดงรายชื่อคนแจ้งเพื่อให้เลือกง่ายขึ้น
             options = {row[id_col]: f"{row['staff_name']} (ID:{row[id_col]})" for _, row in df.iterrows()}
             target = st.selectbox("Select Record", options=options.keys(), format_func=lambda x: options[x])
             new_stat = st.selectbox("Update Status", ["Open", "Closed", "Cancel"])
@@ -136,9 +140,8 @@ with st.sidebar:
             if st.button("🚀 Confirm Update", type="primary"):
                 supabase.table("issue_escalation").update({"status": new_stat}).eq(id_col, target).execute()
                 st.cache_data.clear()
-                st.success("Updated!")
-                st.rerun()
+                st.success("Updated!"); st.rerun()
         else:
-            st.info("ยังไม่มีข้อมูลให้แก้ไข")
+            st.info("No data to update.")
     elif pwd != "":
-        st.error("รหัสผ่านไม่ถูกต้อง")
+        st.error("Wrong Password")
