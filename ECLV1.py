@@ -78,16 +78,17 @@ def export_to_excel_with_photos(dataframe):
     return output.getvalue()
 
 # --- 5. Main Content ---
-df = load_data()
-st.title("🚨 Issue Escalation Portal V2.8")
-
-if not df.empty:
-    c1, c2, c3 = st.columns(3)
-    c1.markdown(f"<div class='card-open'>OPEN<span class='val-text'>{len(df[df['status'] == 'Open'])}</span></div>", unsafe_allow_html=True)
-    c2.markdown(f"<div class='card-closed'>CLOSED<span class='val-text'>{len(df[df['status'] == 'Closed'])}</span></div>", unsafe_allow_html=True)
-    c3.markdown(f"<div class='card-cancel'>CANCEL<span class='val-text'>{len(df[df['status'] == 'Cancel'])}</span></div>", unsafe_allow_html=True)
-
-st.divider()
+def load_data():
+    try:
+        res = supabase.table("issue_escalation").select("*").order("created_at", desc=True).execute()
+        df_raw = pd.DataFrame(res.data)
+        if not df_raw.empty:
+            # เพิ่มบรรทัดนี้เพื่อป้องกัน Error จากค่าวันที่ว่าง
+            df_raw['created_at'] = pd.to_datetime(df_raw['created_at'], errors='coerce')
+        return df_raw
+    except Exception as e:
+        st.error(f"การดึงข้อมูลมีปัญหา: {e}")
+        return pd.DataFrame()
 
 # --- 6. Form ---
 with st.form("issue_form", clear_on_submit=True):
@@ -184,3 +185,4 @@ with st.sidebar:
                 supabase.table("issue_escalation").update({"status": new_status}).eq("id", target_id).execute()
                 st.cache_data.clear()
                 st.rerun()
+
