@@ -88,7 +88,7 @@ def export_excel_with_images(dataframe):
     return output.getvalue()
 
 # --- 5. Header & Refresh Button ---
-col_t, col_r = st.columns([3, 1])
+col_t, col_r = st.columns([5, 1])
 with col_t:
     st.title("🚨 Issue Escalation V3.9")
 with col_r:
@@ -185,4 +185,5 @@ if not df.empty:
                         supabase.table("issue_escalation").delete().eq("id", r['id']).execute()
                         st.cache_data.clear(); st.rerun()
             st.divider()
+
 
