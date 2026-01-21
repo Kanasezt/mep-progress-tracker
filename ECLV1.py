@@ -14,137 +14,130 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="Issue Escalation V2.1", layout="wide")
+st.set_page_config(page_title="Issue Escalation V2.3", layout="wide")
 
-# --- 2. CSS Styling (ทำให้รูปเป็น Square และจัด Layout ตามสั่ง) ---
+# --- 2. CSS Styling ---
 st.markdown("""
     <style>
     div[data-testid="stFormSubmitButton"] > button {
         background-color: #0047AB !important; color: white !important;
-        width: 100%; height: 60px; font-size: 22px; font-weight: bold; border-radius: 10px;
+        width: 100%; height: 60px; font-size: 24px; font-weight: bold; border-radius: 10px;
     }
     .img-square {
-        width: 100px; height: 100px; object-fit: cover; border-radius: 8px; border: 1px solid #ddd;
+        width: 80px; height: 80px; object-fit: cover; border-radius: 8px;
     }
-    .status-box {
-        background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db;
+    .status-card {
+        background-color: #f0f2f6; padding: 15px; border-radius: 10px; text-align: center; border: 1px solid #ddd;
     }
-    .status-val { font-size: 24px; font-weight: bold; color: #0047AB; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. Data Fetching & Processing ---
-def fetch_data():
+# --- 3. Data Fetching ---
+def load_data():
     try:
         res = supabase.table("issue_escalation").select("*").order("created_at", desc=True).execute()
-        df_raw = pd.DataFrame(res.data)
-        if not df_raw.empty:
-            df_raw['created_at'] = pd.to_datetime(df_raw['created_at'])
-            # คำนวณระยะเวลา (ถ้าสถานะยังไม่ปิด ใช้เวลาปัจจุบัน - เวลาสร้าง)
-            df_raw['days_elapsed'] = (datetime.now().astimezone() - df_raw['created_at']).dt.days
-        return df_raw
+        return pd.DataFrame(res.data)
     except:
         return pd.DataFrame()
 
-df = fetch_data()
+df = load_data()
 
-# --- 4. UI: Header & Overall Status ---
+# --- 4. Overall Status ---
 st.title("🚨 Issue Escalation Portal")
 st.write("แจ้งปัญหาที่ไม่สามารถแก้ไขได้ถึง Project Management Team")
 
 if not df.empty:
-    s_col1, s_col2, s_col3, s_col4 = st.columns(4)
-    with s_col1: st.markdown(f"<div class='status-box'>🔴 Open<br><span class='status-val'>{len(df[df['status'] == 'Open'])}</span></div>", unsafe_allow_html=True)
-    with s_col2: st.markdown(f"<div class='status-box'>🔵 In Progress<br><span class='status-val'>{len(df[df['status'] == 'In Progress'])}</span></div>", unsafe_allow_html=True)
-    with s_col3: st.markdown(f"<div class='status-box'>🟢 Closed<br><span class='status-val'>{len(df[df['status'] == 'Closed'])}</span></div>", unsafe_allow_html=True)
-    with s_col4: st.markdown(f"<div class='status-box'>⚪ Cancel<br><span class='status-val'>{len(df[df['status'] == 'Cancel'])}</span></div>", unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    c1.markdown(f"<div class='status-card'><b>Open</b><br><h2>{len(df[df['status'] == 'Open'])}</h2></div>", unsafe_allow_html=True)
+    c2.markdown(f"<div class='status-card'><b>Closed</b><br><h2>{len(df[df['status'] == 'Closed'])}</h2></div>", unsafe_allow_html=True)
+    c3.markdown(f"<div class='status-card'><b>Cancel</b><br><h2>{len(df[df['status'] == 'Cancel'])}</h2></div>", unsafe_allow_html=True)
 
 st.divider()
 
-# --- 5. UI: Form Input ---
-with st.form("main_form", clear_on_submit=True):
-    c_name, c_rel = st.columns([2, 1])
-    u_name = c_name.text_input("** fill the name (50 ตัวอักษร)", max_chars=50, placeholder="ระบุชื่อผู้แจ้ง")
-    u_related = c_rel.selectbox("Related to:", ["IFS", "CSC", "HW", "other"])
+# --- 5. Submit Form ---
+with st.form("issue_form", clear_on_submit=True):
+    col_name, col_rel = st.columns([2, 1])
+    u_name = col_name.text_input("** fill the name (50 ตัวอักษร)", max_chars=50)
+    u_related = col_rel.selectbox("Related to:", ["IFS", "CSC", "HW", "other"])
     
     u_detail = st.text_area("** Issue detail description (500 ตัวอักษร)", max_chars=500, height=150)
     
-    c_file, c_btn = st.columns([3, 1])
-    up_file = c_file.file_uploader("** browse the photo to upload", type=['jpg', 'png', 'jpeg'])
+    c_up, c_btn = st.columns([3, 1])
+    up_file = c_up.file_uploader("** browse the photo to upload", type=['jpg', 'png', 'jpeg'])
     
     if st.form_submit_button("Submit"):
         if u_name and u_detail:
-            img_url = ""
-            if up_file:
-                f_name = f"esc_{uuid.uuid4()}.jpg"
-                supabase.storage.from_('images').upload(f_name, up_file.read())
-                img_url = supabase.storage.from_('images').get_public_url(f_name)
-            
-            supabase.table("issue_escalation").insert({
-                "staff_name": u_name, "issue_detail": u_detail, 
-                "related_to": u_related, "image_url": img_url, "status": "Open"
-            }).execute()
-            st.success("ส่งข้อมูลเรียบร้อย!"); st.rerun()
+            try:
+                img_url = ""
+                if up_file:
+                    f_name = f"esc_{uuid.uuid4()}.jpg"
+                    supabase.storage.from_('images').upload(f_name, up_file.read())
+                    img_url = supabase.storage.from_('images').get_public_url(f_name)
+                
+                # บันทึกข้อมูล
+                supabase.table("issue_escalation").insert({
+                    "staff_name": u_name, "issue_detail": u_detail, 
+                    "related_to": u_related, "image_url": img_url, "status": "Open"
+                }).execute()
+                st.success("✅ Reported Successfully!"); st.rerun()
+            except Exception as e:
+                st.error(f"Error: {e}")
 
 st.divider()
 
-# --- 6. Dashboard & Filter ---
-st.subheader("📊 All Issue Created")
-
+# --- 6. Dashboard Table ---
 if not df.empty:
-    # Filter Row
-    f1, f2, f3, f4 = st.columns([2, 1, 1, 1])
-    search = f1.text_input("🔍 ค้นหาชื่อหรือรายละเอียด")
-    f_rel = f2.selectbox("Filter Related", ["All"] + list(df['related_to'].unique()))
-    f_stat = f3.selectbox("Filter Status", ["All"] + list(df['status'].unique()))
+    st.subheader("📊 All Issue Created")
     
-    # Apply Filtering
-    df_f = df.copy()
+    # Filters & Export
+    f1, f2, f3 = st.columns([2, 1, 1])
+    search = f1.text_input("🔍 Search Name/Description")
+    f_stat = f2.selectbox("Filter Status", ["All"] + list(df['status'].unique()))
+    
+    csv = df.to_csv(index=False).encode('utf-8-sig')
+    f3.download_button("📥 Export CSV", data=csv, file_name="issue_report.csv")
+
+    # Filter Logic
+    df_disp = df.copy()
     if search:
-        df_f = df_f[df_f['staff_name'].str.contains(search, case=False) | df_f['issue_detail'].str.contains(search, case=False)]
-    if f_rel != "All":
-        df_f = df_f[df_f['related_to'] == f_rel]
+        df_disp = df_disp[df_disp['staff_name'].str.contains(search, case=False) | df_disp['issue_detail'].str.contains(search, case=False)]
     if f_stat != "All":
-        df_f = df_f[df_f['status'] == f_stat]
+        df_disp = df_disp[df_disp['status'] == f_stat]
 
-    # Download Button
-    csv = df_f.to_csv(index=False).encode('utf-8-sig')
-    f4.download_button("📥 Export CSV", data=csv, file_name="issue_report.csv", mime='text/csv')
+    # Table Header
+    cols = st.columns([0.5, 1.5, 3, 1, 1, 1.5, 1, 1.5])
+    header = ["no.", "name", "issue description", "Related", "status", "date created", "days", "image"]
+    for c, h in zip(cols, header): c.markdown(f"**{h}**")
 
-    # --- 7. Table Display (ตามรูปแบบรูปที่ 0efad4) ---
-    st.write("---")
-    # หัวตารางแบบ Custom
-    t_h = st.columns([0.5, 1.5, 3, 1, 1, 1.5, 1.5, 1.5])
-    labels = ["no.", "name", "issue description", "Related", "status", "date created", "ระยะเวลา (day)", "image"]
-    for col, label in zip(t_h, labels): col.markdown(f"**{label}**")
-
-    for i, r in df_f.reset_index(drop=True).iterrows():
-        st.divider()
-        c_no, c_name, c_desc, c_rel, c_stat, c_date, c_day, c_img = st.columns([0.5, 1.5, 3, 1, 1, 1.5, 1.5, 1.5])
+    # Table Rows
+    for i, r in df_disp.reset_index(drop=True).iterrows():
+        st.write("---")
+        c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([0.5, 1.5, 3, 1, 1, 1.5, 1, 1.5])
+        c1.write(i+1)
+        c2.write(r['staff_name'])
+        c3.write(r['issue_detail'])
+        c4.write(r['related_to'])
+        c5.write(r['status'])
         
-        c_no.write(i + 1)
-        c_name.write(r['staff_name'])
-        c_desc.write(r['issue_detail'])
-        c_rel.write(r['related_to'])
-        c_stat.write(r['status'])
-        c_date.write(r['created_at'].strftime('%d-%b-%y'))
-        c_day.write(f"{r['days_elapsed']} days")
+        # Date & Day calculation
+        dt = pd.to_datetime(r['created_at'])
+        c6.write(dt.strftime('%d-%b-%y'))
+        days = (datetime.now().date() - dt.date()).days
+        c7.write(f"{days} d")
         
         if r['image_url']:
-            c_img.markdown(f'<img src="{r["image_url"]}" class="img-square">', unsafe_allow_html=True)
-            c_img.markdown(f"[🔗 Open]({r['image_url']})")
+            c8.markdown(f'<img src="{r["image_url"]}" class="img-square">', unsafe_allow_html=True)
+            c8.markdown(f"[🔗 Open]({r['image_url']})")
         else:
-            c_img.write("No Photo")
+            c8.write("No image")
 
-# --- 8. Admin Control (Closed/Cancel Only) ---
+# --- 7. Admin Update ---
 with st.sidebar:
-    st.header("🔐 Admin Panel")
-    pwd = st.text_input("Password", type="password")
-    if pwd == "pm1234":
-        st.success("Admin Mode")
-        if not df.empty:
-            target_id = st.selectbox("Select No. to Update", options=df['id'].tolist())
-            new_stat = st.selectbox("Update Status", ["Open", "In Progress", "Closed", "Cancel"])
-            if st.button("Update Status", type="primary"):
-                supabase.table("issue_escalation").update({"status": new_stat}).eq("id", target_id).execute()
-                st.rerun()
+    st.header("🔐 Admin")
+    pw = st.text_input("Password", type="password")
+    if pw == "pm1234":
+        target = st.selectbox("Select ID", options=df['id'].tolist()) if not df.empty else None
+        new_s = st.selectbox("Status", ["Open", "Closed", "Cancel"])
+        if st.button("Update Status") and target:
+            supabase.table("issue_escalation").update({"status": new_s}).eq("id", target).execute()
+            st.rerun()
