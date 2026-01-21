@@ -5,7 +5,6 @@ import uuid
 from datetime import datetime, timezone
 import io
 import requests
-from PIL import Image
 
 # --- 1. Connection ---
 try:
@@ -17,7 +16,7 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="Issue Escalation V3.4", layout="wide")
+st.set_page_config(page_title="Issue Escalation V3.5", layout="wide")
 
 # --- 2. CSS Styling ---
 st.markdown("""
@@ -31,7 +30,6 @@ st.markdown("""
     .card-closed { background-color: #1B5E20; color: white; padding: 15px; border-radius: 10px; text-align: center; }
     .card-cancel { background-color: #424242; color: white; padding: 15px; border-radius: 10px; text-align: center; }
     .val-text { font-size: 30px; font-weight: bold; display: block; }
-    .status-badge { padding: 4px 8px; border-radius: 5px; font-weight: bold; font-size: 14px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -46,27 +44,27 @@ def load_data():
     except:
         return pd.DataFrame()
 
-# --- 4. Excel Export Function (With Photos & Split DateTime) ---
+# --- 4. Excel Export Function ---
 def export_excel_with_images(dataframe):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        # เตรียมข้อมูลสำหรับ Export
         df_ex = dataframe.copy()
-        df_ex['id'] = df_ex['id'].apply(lambda x: f"{x:03d}")
+        df_ex['id_str'] = df_ex['id'].apply(lambda x: f"{x:03d}")
         df_ex['created_date'] = df_ex['created_at'].dt.strftime('%d-%b-%y')
         df_ex['created_time'] = df_ex['created_at'].dt.strftime('%I:%M:%S %p')
         
-        # จัดเรียงคอลัมน์ตามภาพตัวอย่าง
-        cols = ['id', 'staff_name', 'issue_detail', 'related_to', 'status', 'created_date', 'created_time']
+        # คอลัมน์ตามหัวตารางที่พี่ต้องการ
+        cols = ['id_str', 'staff_name', 'issue_detail', 'related_to', 'status', 'created_date', 'created_time']
         df_final = df_ex[cols]
+        df_final.columns = ['id', 'staff_name', 'issue_detail', 'related_to', 'status', 'created_date', 'created_time']
         df_final.to_excel(writer, sheet_name='Report', index=False)
         
         workbook = writer.book
         worksheet = writer.sheets['Report']
-        worksheet.set_column('F:F', 15) # Image Column Space
-        worksheet.set_default_row(80)   # Row Height for Images
+        worksheet.set_column('H:H', 20) # ช่องสำหรับรูปภาพ (คอลัมน์ Image)
+        worksheet.write(0, 7, 'Image')
+        worksheet.set_default_row(80)
         
-        # ใส่รูปภาพลงในช่อง
         for i, url in enumerate(df_ex['image_url']):
             if url and url.startswith("http"):
                 try:
@@ -78,9 +76,18 @@ def export_excel_with_images(dataframe):
 
 df = load_data()
 
-# --- 5. Main UI ---
-st.title("🚨 Issue Escalation V3.4")
+# --- 5. Sidebar Admin (ย้ายออกมาอยู่นี่เพื่อแก้ Error) ---
+with st.sidebar:
+    st.header("🔐 Admin Access")
+    admin_pwd = st.text_input("Enter Password", type="password")
+    is_admin = (admin_pwd == "pm1234")
+    if is_admin:
+        st.success("Admin Mode ON ✅")
+    elif admin_pwd:
+        st.error("Wrong Password ❌")
 
+# --- 6. Main UI Summary ---
+st.title("🚨 Issue Escalation V3.5")
 c1, c2, c3 = st.columns(3)
 op = len(df[df['status'] == 'Open']) if not df.empty else 0
 cl = len(df[df['status'] == 'Closed']) if not df.empty else 0
@@ -92,12 +99,12 @@ c3.markdown(f"<div class='card-cancel'>CANCEL<span class='val-text'>{can}</span>
 
 st.divider()
 
-# --- 6. Submit Form ---
+# --- 7. Submit Form ---
 with st.form("issue_form", clear_on_submit=True):
     col_n, col_r = st.columns([2, 1])
-    u_name = col_n.text_input("** Fill Name (50 characters)")
+    u_name = col_n.text_input("** Fill Name")
     u_related = col_r.radio("Related to:", options=["IFS", "CSC", "HW", "other"], horizontal=True)
-    u_detail = st.text_area("** Issue Detail description (500 characters)", height=100)
+    u_detail = st.text_area("** Issue Detail", height=100)
     up_file = st.file_uploader("** Upload Photo", type=['jpg', 'png', 'jpeg'])
     
     if st.form_submit_button("Submit"):
@@ -113,7 +120,7 @@ with st.form("issue_form", clear_on_submit=True):
             }).execute()
             st.success("✅ Reported!"); st.rerun()
 
-# --- 7. Dashboard ---
+# --- 8. Dashboard ---
 if not df.empty:
     st.divider()
     st.subheader("📋 Dashboard")
@@ -127,46 +134,43 @@ if not df.empty:
     if f_stat != "All":
         df_f = df_f[df_f['status'] == f_stat]
 
-    if f3.button("🚀 Prepare Excel with Photos"):
-        with st.spinner("กำลังสร้างไฟล์พร้อมรูปภาพ..."):
-            excel_data = export_excel_with_images(df_f)
-            st.download_button("📥 Click to Download", data=excel_data, file_name=f"Report_{datetime.now().strftime('%Y%m%d')}.xlsx")
+    if f3.button("📥 Download Excel with Photos"):
+        with st.spinner("Processing..."):
+            excel_file = export_excel_with_images(df_f)
+            st.download_button("💾 Save Excel File", data=excel_file, file_name=f"Report_{datetime.now().strftime('%d%m%Y')}.xlsx")
 
-    # ส่วนการแสดงผลรายการ
     now = datetime.now(timezone.utc)
     for i, r in df_f.reset_index(drop=True).iterrows():
         with st.container():
-            c_img, c_info, c_admin = st.columns([1.5, 3.5, 1])
+            c_img, c_info, c_admin = st.columns([1.5, 3.5, 1.2])
             with c_img:
                 if r['image_url']: st.markdown(f'<img src="{r["image_url"]}" class="img-card">', unsafe_allow_html=True)
-                else: st.write("🖼️ No Image")
+                else: st.write("No Image")
             
             with c_info:
-                # ข้อ 2: ใส่ ID 001-999 หน้าชื่อ
+                # 1. แสดง ID (001) หน้าชื่อ
                 st.markdown(f"### {r['id']:03d} - {r['staff_name']}")
                 
-                # ข้อ 3: คำนวณวัน Pending
-                created_at = r['created_at'].replace(tzinfo=timezone.utc) if r['created_at'].tzinfo is None else r['created_at']
-                diff = (now - created_at).days
-                pending_text = f"{diff} days pending" if r['status'] != 'Closed' else "Completed"
+                # 2. คำนวณวัน Pending (นับจาก created_at ถึงปัจจุบัน ถ้ายังไม่ Closed)
+                c_time = r['created_at'].replace(tzinfo=timezone.utc) if r['created_at'].tzinfo is None else r['created_at']
+                days_pending = (now - c_time).days
                 
                 st.write(f"**Detail:** {r['issue_detail']}")
-                st.caption(f"🏷️ {r['related_to']} | 📅 {created_at.strftime('%d %b %Y')} | ⏳ {pending_text}")
-                st.markdown(f"Status: `{r['status']}`")
+                st.markdown(f"Status: **{r['status']}**")
+                
+                # แสดงวันค้างรับเคส
+                if r['status'] == 'Closed':
+                    st.caption(f"✅ Completed | 📅 {c_time.strftime('%d %b %y')}")
+                else:
+                    st.warning(f"⏳ {days_pending} days pending | 🏷️ {r['related_to']}")
 
-            # ข้อ 2: Admin แก้ไข status ตรงนี้เลย
+            # 3. Admin แก้ไขสถานะข้างรายการ
             with c_admin:
-                if st.sidebar.text_input("Admin Password", type="password", key="side_pwd") == "pm1234":
-                    new_stat = st.selectbox("Update", ["Open", "Closed", "Cancel"], index=["Open", "Closed", "Cancel"].index(r['status']), key=f"sel_{r['id']}")
-                    if st.button("Confirm", key=f"btn_{r['id']}"):
+                if is_admin:
+                    new_stat = st.selectbox("Update Status", ["Open", "Closed", "Cancel"], 
+                                          index=["Open", "Closed", "Cancel"].index(r['status']), 
+                                          key=f"status_{r['id']}")
+                    if st.button("Confirm ✅", key=f"btn_{r['id']}"):
                         supabase.table("issue_escalation").update({"status": new_stat}).eq("id", r['id']).execute()
                         st.rerun()
             st.divider()
-
-# --- 8. Sidebar Admin Logged In Status ---
-with st.sidebar:
-    st.header("🔐 Admin Access")
-    if st.session_state.get('side_pwd') == "pm1234":
-        st.success("Admin Logged In ✅")
-    else:
-        st.info("กรุณาใส่รหัสผ่านเพื่อแก้ไขข้อมูล")
