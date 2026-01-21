@@ -42,7 +42,11 @@ def load_data():
         df_raw = pd.DataFrame(res.data)
         if not df_raw.empty:
             df_raw['created_at'] = pd.to_datetime(df_raw['created_at']).dt.tz_convert('Asia/Bangkok')
-            df_raw['updated_at'] = pd.to_datetime(df_raw.get('updated_at', df_raw['created_at'])).dt.tz_convert('Asia/Bangkok')
+            # ตรวจสอบเรื่อง updated_at เพื่อกัน Error ตอนแสดงผล
+            if 'updated_at' in df_raw.columns:
+                df_raw['updated_at'] = pd.to_datetime(df_raw['updated_at']).dt.tz_convert('Asia/Bangkok')
+            else:
+                df_raw['updated_at'] = df_raw['created_at']
         return df_raw
     except:
         return pd.DataFrame()
@@ -88,7 +92,7 @@ col_t, col_r = st.columns([5, 1])
 with col_t:
     st.title("🚨 Issue Escalation V3.9")
 with col_r:
-    st.write("##") # ปรับตำแหน่งปุ่มให้ตรงกับหัวข้อ
+    st.write("##") 
     if st.button("🔄 Refresh Data"):
         st.cache_data.clear()
         st.rerun()
@@ -103,13 +107,14 @@ with st.sidebar:
     if is_admin: st.success("Admin Mode ON ✅")
 
 # --- 7. Cards & Form ---
-c1, c2, c3 = st.columns(3)
-op = len(df[df['status'] == 'Open']) if not df.empty else 0
-cl = len(df[df['status'] == 'Closed']) if not df.empty else 0
-can = len(df[df['status'] == 'Cancel']) if not df.empty else 0
-c1.markdown(f"<div class='card-open'>OPEN<span class='val-text'>{op}</span></div>", unsafe_allow_html=True)
-c2.markdown(f"<div class='card-closed'>CLOSED<span class='val-text'>{cl}</span></div>", unsafe_allow_html=True)
-c3.markdown(f"<div class='card-cancel'>CANCEL<span class='val-text'>{can}</span></div>", unsafe_allow_html=True)
+if not df.empty:
+    c1, c2, c3 = st.columns(3)
+    op = len(df[df['status'] == 'Open'])
+    cl = len(df[df['status'] == 'Closed'])
+    can = len(df[df['status'] == 'Cancel'])
+    c1.markdown(f"<div class='card-open'>OPEN<span class='val-text'>{op}</span></div>", unsafe_allow_html=True)
+    c2.markdown(f"<div class='card-closed'>CLOSED<span class='val-text'>{cl}</span></div>", unsafe_allow_html=True)
+    c3.markdown(f"<div class='card-cancel'>CANCEL<span class='val-text'>{can}</span></div>", unsafe_allow_html=True)
 
 st.divider()
 
@@ -161,13 +166,21 @@ if not df.empty:
                     st.success(f"✅ Completed | 📅 {r['created_at'].strftime('%d %b %y')} | 🕒 {r['created_at'].strftime('%H:%M:%S')}")
                 else:
                     st.warning(f"⏳ {max(0, days)} days pending | 📅 {r['created_at'].strftime('%d %b %y')} | 🕒 {r['created_at'].strftime('%H:%M:%S')}")
+            
             with c_admin:
                 if is_admin:
                     new_stat = st.selectbox("Update Status", ["Open", "Closed", "Cancel"], index=["Open", "Closed", "Cancel"].index(r['status']), key=f"st_{r['id']}")
                     b1, b2 = st.columns(2)
+                    
                     if b1.button("Confirm ✅", key=f"ok_{r['id']}"):
-                        supabase.table("issue_escalation").update({"status": new_stat, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", r['id']).execute()
+                        try:
+                            # พยายามอัปเดตทั้ง Status และวันที่
+                            supabase.table("issue_escalation").update({"status": new_stat, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", r['id']).execute()
+                        except:
+                            # ถ้าคอลัมน์ updated_at ไม่มี ให้ส่งแค่อย่างเดียว จะได้ไม่ Error
+                            supabase.table("issue_escalation").update({"status": new_stat}).eq("id", r['id']).execute()
                         st.cache_data.clear(); st.rerun()
+                    
                     if b2.button("Delete 🗑️", key=f"del_{r['id']}"):
                         supabase.table("issue_escalation").delete().eq("id", r['id']).execute()
                         st.cache_data.clear(); st.rerun()
