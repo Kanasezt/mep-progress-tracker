@@ -172,13 +172,21 @@ if not df.empty:
             c8.write("No image")
 
 # --- 9. Sidebar Admin ---
+# --- ส่วน Admin แบบมีปุ่มกดชัดเจน ---
 with st.sidebar:
-    st.header("🔐 Admin")
+    st.header("🔐 Admin Panel")
     pwd = st.text_input("Password", type="password")
-    if pwd == "pm1234":
-        if not df.empty:
-            target_id = st.selectbox("Update ID", options=df['id'].tolist())
-            new_status = st.selectbox("New Status", ["Open", "Closed", "Cancel"])
-            if st.button("Confirm Update"):
-                supabase.table("issue_escalation").update({"status": new_status}).eq("id", target_id).execute()
-                st.rerun()
+    # เพิ่มปุ่ม Login ให้กดง่ายๆ
+    btn_login = st.button("Login")
+    
+    if btn_login:
+        if pwd == "pm1234":
+            st.session_state['admin_auth'] = True
+        else:
+            st.error("รหัสผ่านไม่ถูกต้อง")
+
+    # ถ้า Login ผ่านแล้ว ให้โชว์เมนูจัดการ
+    if st.session_state.get('admin_auth', False):
+        st.success("Admin Access Granted")
+        # ... (เมนู Update Status) ...
+
