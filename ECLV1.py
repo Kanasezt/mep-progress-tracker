@@ -88,7 +88,7 @@ def export_excel_with_images(dataframe):
     return output.getvalue()
 
 # --- 5. Header & Refresh Button ---
-col_t, col_r = st.columns([5, 1])
+col_t, col_r = st.columns([3, 1])
 with col_t:
     st.title("🚨 Issue Escalation V3.9")
 with col_r:
@@ -120,7 +120,7 @@ st.divider()
 
 with st.form("issue_form", clear_on_submit=True):
     col_n, col_r = st.columns([2, 1])
-    u_name = col_n.text_input("** Fill Name")
+    u_name = col_n.text_input("** Fill Your Name")
     u_related = col_r.radio("Related to:", options=["IFS", "CSC", "HW", "other"], horizontal=True)
     u_detail = st.text_area("** Issue Detail", height=100)
     up_file = st.file_uploader("** Upload Photo", type=['jpg', 'png', 'jpeg'])
@@ -185,3 +185,4 @@ if not df.empty:
                         supabase.table("issue_escalation").delete().eq("id", r['id']).execute()
                         st.cache_data.clear(); st.rerun()
             st.divider()
+
