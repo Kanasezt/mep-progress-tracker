@@ -16,7 +16,7 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="Issue Escalation V3.6", layout="wide")
+st.set_page_config(page_title="Issue Escalation V3.7", layout="wide")
 
 # --- 2. CSS Styling ---
 st.markdown("""
@@ -30,6 +30,7 @@ st.markdown("""
     .card-closed { background-color: #1B5E20; color: white; padding: 15px; border-radius: 10px; text-align: center; }
     .card-cancel { background-color: #424242; color: white; padding: 15px; border-radius: 10px; text-align: center; }
     .val-text { font-size: 30px; font-weight: bold; display: block; }
+    .related-tag { background-color: #f0f2f6; color: #31333F; padding: 2px 8px; border-radius: 5px; font-size: 14px; font-weight: bold; margin-left: 10px; border: 1px solid #ddd; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -39,15 +40,13 @@ def load_data():
         res = supabase.table("issue_escalation").select("*").order("id", desc=True).execute()
         df_raw = pd.DataFrame(res.data)
         if not df_raw.empty:
-            # แปลงเป็นเวลาไทย (UTC+7)
             df_raw['created_at'] = pd.to_datetime(df_raw['created_at']).dt.tz_convert('Asia/Bangkok')
-            # สมมติว่ามีคอลัมน์ updated_at สำหรับ Complete Date (ถ้าไม่มีจะใช้เวลาปัจจุบันไปก่อน)
             df_raw['updated_at'] = pd.to_datetime(df_raw.get('updated_at', df_raw['created_at'])).dt.tz_convert('Asia/Bangkok')
         return df_raw
     except:
         return pd.DataFrame()
 
-# --- 4. Excel Export Function (V3.6: Thai Time & Full Dates) ---
+# --- 4. Excel Export Function (V3.7: With Full Dates & Thai Time) ---
 def export_excel_with_images(dataframe):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -58,27 +57,25 @@ def export_excel_with_images(dataframe):
         df_ex['Create Date'] = df_ex['created_at'].dt.strftime('%d-%b-%y')
         df_ex['Create Time'] = df_ex['created_at'].dt.strftime('%H:%M:%S')
         
-        # คำนวณวัน Pending และ Complete Date
         def get_status_info(row):
             c_date = row['created_at']
             if row['status'] == 'Closed':
                 comp_date = row['updated_at'].strftime('%d-%b-%y')
                 days = (row['updated_at'] - c_date).days
-                return comp_date, f"{days} days"
+                return comp_date, f"{max(0, days)} days"
             else:
                 days = (now_th - c_date).days
-                return "Processing", f"{days} days"
+                return "Processing", f"{max(0, days)} days"
 
         df_ex[['Complete Date', 'Pending Days']] = df_ex.apply(lambda x: pd.Series(get_status_info(x)), axis=1)
         
         cols = ['id_str', 'staff_name', 'issue_detail', 'related_to', 'status', 'Create Date', 'Create Time', 'Complete Date', 'Pending Days']
         df_final = df_ex[cols]
-        df_final.columns = ['ID', 'Staff Name', 'Detail', 'Related', 'Status', 'Create Date', 'Create Time', 'Complete Date', 'Pending Days']
+        df_final.columns = ['ID', 'Staff Name', 'Detail', 'Related to', 'Status', 'Create Date', 'Create Time', 'Complete Date', 'Pending Days']
         
         df_final.to_excel(writer, sheet_name='Issue_Report', index=False)
-        
         worksheet = writer.sheets['Issue_Report']
-        worksheet.set_column('J:J', 20) # Column for Image
+        worksheet.set_column('J:J', 20)
         worksheet.write(0, 9, 'Image')
         worksheet.set_default_row(80)
         
@@ -101,7 +98,7 @@ with st.sidebar:
     if is_admin: st.success("Admin Mode ON ✅")
 
 # --- 6. Main UI ---
-st.title("🚨 Issue Escalation V3.6")
+st.title("🚨 Issue Escalation V3.7")
 c1, c2, c3 = st.columns(3)
 op = len(df[df['status'] == 'Open']) if not df.empty else 0
 cl = len(df[df['status'] == 'Closed']) if not df.empty else 0
@@ -149,9 +146,9 @@ if not df.empty:
         df_f = df_f[df_f['status'] == f_stat]
 
     if f3.button("📥 Download Excel with Photos"):
-        with st.spinner("กำลังสรุปเวลาไทยและใส่รูป..."):
+        with st.spinner("กำลังสรุปข้อมูล..."):
             excel_file = export_excel_with_images(df_f)
-            st.download_button("💾 Save Excel", data=excel_file, file_name=f"Report_TH_{datetime.now().strftime('%d%m%Y')}.xlsx")
+            st.download_button("💾 Save Excel", data=excel_file, file_name=f"Report_V37_{datetime.now().strftime('%d%m%Y')}.xlsx")
 
     now_th = datetime.now(timezone(timedelta(hours=7)))
     for i, r in df_f.reset_index(drop=True).iterrows():
@@ -161,15 +158,17 @@ if not df.empty:
                 if r['image_url']: st.markdown(f'<img src="{r["image_url"]}" class="img-card">', unsafe_allow_html=True)
             
             with c_info:
-                st.markdown(f"### {r['id']:03d} - {r['staff_name']}")
+                # แสดง ID, ชื่อ และ ฝ่ายที่เกี่ยวข้อง (Related to)
+                st.markdown(f"### {r['id']:03d} - {r['staff_name']} <span class='related-tag'>Related to: {r['related_to']}</span>", unsafe_allow_html=True)
                 days = (now_th - r['created_at']).days
                 st.write(f"**Detail:** {r['issue_detail']}")
                 st.markdown(f"Status: **{r['status']}**")
                 
+                # แสดงวันเวลาไทยและสถานะ
                 if r['status'] == 'Closed':
                     st.success(f"✅ Completed | 📅 {r['created_at'].strftime('%d %b %y')} | 🕒 {r['created_at'].strftime('%H:%M:%S')}")
                 else:
-                    st.warning(f"⏳ {days} days pending | 📅 {r['created_at'].strftime('%d %b %y')} | 🕒 {r['created_at'].strftime('%H:%M:%S')}")
+                    st.warning(f"⏳ {max(0, days)} days pending | 📅 {r['created_at'].strftime('%d %b %y')} | 🕒 {r['created_at'].strftime('%H:%M:%S')}")
 
             with c_admin:
                 if is_admin:
@@ -177,7 +176,6 @@ if not df.empty:
                                           index=["Open", "Closed", "Cancel"].index(r['status']), 
                                           key=f"st_{r['id']}")
                     if st.button("Confirm ✅", key=f"btn_{r['id']}"):
-                        # อัปเดตทั้ง status และ updated_at เป็นเวลาปัจจุบัน
                         supabase.table("issue_escalation").update({
                             "status": new_stat, 
                             "updated_at": datetime.now(timezone.utc).isoformat()
