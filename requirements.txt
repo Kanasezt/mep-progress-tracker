@@ -1,4 +1,6 @@
 streamlit
-supabase
 pandas
-plotly
+supabase
+xlsxwriter
+Pillow
+requests
