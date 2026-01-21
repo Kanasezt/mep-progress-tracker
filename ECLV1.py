@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import io
 import requests
 
@@ -16,7 +16,7 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="Issue Escalation V3.5", layout="wide")
+st.set_page_config(page_title="Issue Escalation V3.6", layout="wide")
 
 # --- 2. CSS Styling ---
 st.markdown("""
@@ -39,30 +39,47 @@ def load_data():
         res = supabase.table("issue_escalation").select("*").order("id", desc=True).execute()
         df_raw = pd.DataFrame(res.data)
         if not df_raw.empty:
-            df_raw['created_at'] = pd.to_datetime(df_raw['created_at'])
+            # แปลงเป็นเวลาไทย (UTC+7)
+            df_raw['created_at'] = pd.to_datetime(df_raw['created_at']).dt.tz_convert('Asia/Bangkok')
+            # สมมติว่ามีคอลัมน์ updated_at สำหรับ Complete Date (ถ้าไม่มีจะใช้เวลาปัจจุบันไปก่อน)
+            df_raw['updated_at'] = pd.to_datetime(df_raw.get('updated_at', df_raw['created_at'])).dt.tz_convert('Asia/Bangkok')
         return df_raw
     except:
         return pd.DataFrame()
 
-# --- 4. Excel Export Function ---
+# --- 4. Excel Export Function (V3.6: Thai Time & Full Dates) ---
 def export_excel_with_images(dataframe):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df_ex = dataframe.copy()
+        now_th = datetime.now(timezone(timedelta(hours=7)))
+        
         df_ex['id_str'] = df_ex['id'].apply(lambda x: f"{x:03d}")
-        df_ex['created_date'] = df_ex['created_at'].dt.strftime('%d-%b-%y')
-        df_ex['created_time'] = df_ex['created_at'].dt.strftime('%I:%M:%S %p')
+        df_ex['Create Date'] = df_ex['created_at'].dt.strftime('%d-%b-%y')
+        df_ex['Create Time'] = df_ex['created_at'].dt.strftime('%H:%M:%S')
         
-        # คอลัมน์ตามหัวตารางที่พี่ต้องการ
-        cols = ['id_str', 'staff_name', 'issue_detail', 'related_to', 'status', 'created_date', 'created_time']
+        # คำนวณวัน Pending และ Complete Date
+        def get_status_info(row):
+            c_date = row['created_at']
+            if row['status'] == 'Closed':
+                comp_date = row['updated_at'].strftime('%d-%b-%y')
+                days = (row['updated_at'] - c_date).days
+                return comp_date, f"{days} days"
+            else:
+                days = (now_th - c_date).days
+                return "Processing", f"{days} days"
+
+        df_ex[['Complete Date', 'Pending Days']] = df_ex.apply(lambda x: pd.Series(get_status_info(x)), axis=1)
+        
+        cols = ['id_str', 'staff_name', 'issue_detail', 'related_to', 'status', 'Create Date', 'Create Time', 'Complete Date', 'Pending Days']
         df_final = df_ex[cols]
-        df_final.columns = ['id', 'staff_name', 'issue_detail', 'related_to', 'status', 'created_date', 'created_time']
-        df_final.to_excel(writer, sheet_name='Report', index=False)
+        df_final.columns = ['ID', 'Staff Name', 'Detail', 'Related', 'Status', 'Create Date', 'Create Time', 'Complete Date', 'Pending Days']
         
-        workbook = writer.book
-        worksheet = writer.sheets['Report']
-        worksheet.set_column('H:H', 20) # ช่องสำหรับรูปภาพ (คอลัมน์ Image)
-        worksheet.write(0, 7, 'Image')
+        df_final.to_excel(writer, sheet_name='Issue_Report', index=False)
+        
+        worksheet = writer.sheets['Issue_Report']
+        worksheet.set_column('J:J', 20) # Column for Image
+        worksheet.write(0, 9, 'Image')
         worksheet.set_default_row(80)
         
         for i, url in enumerate(df_ex['image_url']):
@@ -70,24 +87,21 @@ def export_excel_with_images(dataframe):
                 try:
                     resp = requests.get(url, timeout=5)
                     img_data = io.BytesIO(resp.content)
-                    worksheet.insert_image(i + 1, 7, url, {'image_data': img_data, 'x_scale': 0.1, 'y_scale': 0.1, 'x_offset': 5, 'y_offset': 5})
+                    worksheet.insert_image(i + 1, 9, url, {'image_data': img_data, 'x_scale': 0.12, 'y_scale': 0.12, 'x_offset': 5, 'y_offset': 5})
                 except: continue
     return output.getvalue()
 
 df = load_data()
 
-# --- 5. Sidebar Admin (ย้ายออกมาอยู่นี่เพื่อแก้ Error) ---
+# --- 5. Sidebar Admin ---
 with st.sidebar:
     st.header("🔐 Admin Access")
     admin_pwd = st.text_input("Enter Password", type="password")
     is_admin = (admin_pwd == "pm1234")
-    if is_admin:
-        st.success("Admin Mode ON ✅")
-    elif admin_pwd:
-        st.error("Wrong Password ❌")
+    if is_admin: st.success("Admin Mode ON ✅")
 
-# --- 6. Main UI Summary ---
-st.title("🚨 Issue Escalation V3.5")
+# --- 6. Main UI ---
+st.title("🚨 Issue Escalation V3.6")
 c1, c2, c3 = st.columns(3)
 op = len(df[df['status'] == 'Open']) if not df.empty else 0
 cl = len(df[df['status'] == 'Closed']) if not df.empty else 0
@@ -99,7 +113,7 @@ c3.markdown(f"<div class='card-cancel'>CANCEL<span class='val-text'>{can}</span>
 
 st.divider()
 
-# --- 7. Submit Form ---
+# --- 7. Form ---
 with st.form("issue_form", clear_on_submit=True):
     col_n, col_r = st.columns([2, 1])
     u_name = col_n.text_input("** Fill Name")
@@ -118,13 +132,13 @@ with st.form("issue_form", clear_on_submit=True):
                 "staff_name": u_name, "issue_detail": u_detail, 
                 "related_to": u_related, "image_url": img_url, "status": "Open"
             }).execute()
-            st.success("✅ Reported!"); st.rerun()
+            st.success("✅ Success!"); st.rerun()
 
 # --- 8. Dashboard ---
 if not df.empty:
     st.divider()
     st.subheader("📋 Dashboard")
-    f1, f2, f3 = st.columns([2, 1, 1])
+    f1, f2, f3 = st.columns([2, 1, 1.2])
     search = f1.text_input("🔍 Search Name/Detail")
     f_stat = f2.selectbox("Filter Status", ["All", "Open", "Closed", "Cancel"])
     
@@ -135,42 +149,38 @@ if not df.empty:
         df_f = df_f[df_f['status'] == f_stat]
 
     if f3.button("📥 Download Excel with Photos"):
-        with st.spinner("Processing..."):
+        with st.spinner("กำลังสรุปเวลาไทยและใส่รูป..."):
             excel_file = export_excel_with_images(df_f)
-            st.download_button("💾 Save Excel File", data=excel_file, file_name=f"Report_{datetime.now().strftime('%d%m%Y')}.xlsx")
+            st.download_button("💾 Save Excel", data=excel_file, file_name=f"Report_TH_{datetime.now().strftime('%d%m%Y')}.xlsx")
 
-    now = datetime.now(timezone.utc)
+    now_th = datetime.now(timezone(timedelta(hours=7)))
     for i, r in df_f.reset_index(drop=True).iterrows():
         with st.container():
             c_img, c_info, c_admin = st.columns([1.5, 3.5, 1.2])
             with c_img:
                 if r['image_url']: st.markdown(f'<img src="{r["image_url"]}" class="img-card">', unsafe_allow_html=True)
-                else: st.write("No Image")
             
             with c_info:
-                # 1. แสดง ID (001) หน้าชื่อ
                 st.markdown(f"### {r['id']:03d} - {r['staff_name']}")
-                
-                # 2. คำนวณวัน Pending (นับจาก created_at ถึงปัจจุบัน ถ้ายังไม่ Closed)
-                c_time = r['created_at'].replace(tzinfo=timezone.utc) if r['created_at'].tzinfo is None else r['created_at']
-                days_pending = (now - c_time).days
-                
+                days = (now_th - r['created_at']).days
                 st.write(f"**Detail:** {r['issue_detail']}")
                 st.markdown(f"Status: **{r['status']}**")
                 
-                # แสดงวันค้างรับเคส
                 if r['status'] == 'Closed':
-                    st.caption(f"✅ Completed | 📅 {c_time.strftime('%d %b %y')}")
+                    st.success(f"✅ Completed | 📅 {r['created_at'].strftime('%d %b %y')} | 🕒 {r['created_at'].strftime('%H:%M:%S')}")
                 else:
-                    st.warning(f"⏳ {days_pending} days pending | 🏷️ {r['related_to']}")
+                    st.warning(f"⏳ {days} days pending | 📅 {r['created_at'].strftime('%d %b %y')} | 🕒 {r['created_at'].strftime('%H:%M:%S')}")
 
-            # 3. Admin แก้ไขสถานะข้างรายการ
             with c_admin:
                 if is_admin:
-                    new_stat = st.selectbox("Update Status", ["Open", "Closed", "Cancel"], 
+                    new_stat = st.selectbox("Update", ["Open", "Closed", "Cancel"], 
                                           index=["Open", "Closed", "Cancel"].index(r['status']), 
-                                          key=f"status_{r['id']}")
+                                          key=f"st_{r['id']}")
                     if st.button("Confirm ✅", key=f"btn_{r['id']}"):
-                        supabase.table("issue_escalation").update({"status": new_stat}).eq("id", r['id']).execute()
+                        # อัปเดตทั้ง status และ updated_at เป็นเวลาปัจจุบัน
+                        supabase.table("issue_escalation").update({
+                            "status": new_stat, 
+                            "updated_at": datetime.now(timezone.utc).isoformat()
+                        }).eq("id", r['id']).execute()
                         st.rerun()
             st.divider()
