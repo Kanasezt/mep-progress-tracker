@@ -20,19 +20,51 @@ supabase: Client = create_client(URL, KEY)
 st.set_page_config(page_title="Issue Escalation V2.8", layout="wide")
 
 # --- 2. CSS Styling ---
+# --- 2. CSS Styling (ปรับปรุงเพื่อ Mobile) ---
 st.markdown("""
     <style>
+    /* ปรับแต่งปุ่ม Submit */
     div[data-testid="stFormSubmitButton"] > button {
         background-color: #0047AB !important; color: white !important;
         width: 100%; height: 50px; font-size: 20px; font-weight: bold; border-radius: 10px;
     }
-    .img-square { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid #ddd; }
-    .card-open { background-color: #E65100; color: white; padding: 15px; border-radius: 10px; text-align: center; border: 1px solid #bf4300; }
-    .card-closed { background-color: #1B5E20; color: white; padding: 15px; border-radius: 10px; text-align: center; border: 1px solid #144618; }
-    .card-cancel { background-color: #424242; color: white; padding: 15px; border-radius: 10px; text-align: center; border: 1px solid #333; }
-    .val-text { font-size: 32px; font-weight: bold; display: block; }
+    
+    /* รูปภาพให้มีขนาดพอดี */
+    .img-square { 
+        width: 100%; 
+        max-width: 150px; 
+        aspect-ratio: 1/1; 
+        object-fit: cover; 
+        border-radius: 8px; 
+        border: 1px solid #ddd; 
+    }
+
+    /* สไตล์ของ Card สำหรับมือถือ */
+    .issue-card {
+        background-color: #f9f9f9;
+        border-left: 5px solid #0047AB;
+        padding: 15px;
+        margin-bottom: 10px;
+        border-radius: 8px;
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+    }
+    
+    .status-tag {
+        padding: 2px 8px;
+        border-radius: 15px;
+        font-size: 12px;
+        font-weight: bold;
+        color: white;
+    }
+    
+    /* ซ่อนตารางปกติในมือถือ (ใช้การปรับ column width ของ streamlit) */
+    @media (max-width: 640px) {
+        .stHorizontalBlock {
+            flex-direction: column !important;
+        }
+    }
     </style>
-""", unsafe_allow_html=True)
+""", unsafe_allow_html=True)True)
 
 # --- 3. Function: Load Data ---
 def load_data():
@@ -148,28 +180,38 @@ if not df.empty:
                 st.error(f"Error: {e}. กรุณาตรวจสอบ xlsxwriter ใน requirements.txt")
 
     # Web Table Display
-    t_h = st.columns([0.5, 1.2, 2.5, 1, 1, 1.2, 0.8, 1.2])
-    for col, label in zip(t_h, ["no.", "name", "issue description", "Related", "status", "date created", "days", "image"]):
-        col.markdown(f"**{label}**")
-
-    now_utc = datetime.now(timezone.utc)
-    for i, r in df_f.reset_index(drop=True).iterrows():
-        st.write("---")
-        c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([0.5, 1.2, 2.5, 1, 1, 1.2, 0.8, 1.2])
-        c1.write(i+1); c2.write(r['staff_name']); c3.write(r['issue_detail'])
-        c4.write(r['related_to']); c5.write(r['status'])
+    # --- 7. Table Display (ปรับให้ดูง่ายในมือถือ) ---
+    if not df_f.empty:
+        now_utc = datetime.now(timezone.utc)
         
-        if pd.notnull(r['created_at']):
-            created_utc = r['created_at'].replace(tzinfo=timezone.utc) if r['created_at'].tzinfo is None else r['created_at'].astimezone(timezone.utc)
-            c6.write(created_utc.strftime('%d-%b-%y'))
-            c7.write(f"{max(0, (now_utc - created_utc).days)} d")
-        else:
-            c6.write("-"); c7.write("-")
-        
-        if r['image_url']:
-            c8.markdown(f'<img src="{r["image_url"]}" class="img-square">', unsafe_allow_html=True)
-        else:
-            c8.write("No image")
+        for i, r in df_f.reset_index(drop=True).iterrows():
+            # สร้างกล่องสี่เหลี่ยมสำหรับแต่ละรายการ
+            with st.container():
+                # ใช้ columns แค่ 2 ฝั่ง (รูป | รายละเอียด) เพื่อให้ในมือถือไม่บีบเกินไป
+                col_img, col_txt = st.columns([1, 3])
+                
+                with col_img:
+                    if r['image_url']:
+                        st.markdown(f'<img src="{r["image_url"]}" class="img-square">', unsafe_allow_html=True)
+                    else:
+                        st.write("🖼️ No Image")
+                
+                with col_txt:
+                    # แสดง Status เป็นสีๆ
+                    st.markdown(f"**{r['staff_name']}** | Status: `{r['status']}`")
+                    st.write(f"💬 {r['issue_detail']}")
+                    
+                    # ข้อมูลเล็กๆ ด้านล่าง
+                    date_str = "-"
+                    day_str = "-"
+                    if pd.notnull(r['created_at']):
+                        c_utc = r['created_at'].replace(tzinfo=timezone.utc) if r['created_at'].tzinfo is None else r['created_at'].astimezone(timezone.utc)
+                        date_str = c_utc.strftime('%d %b %y')
+                        day_str = f"{(now_utc - c_utc).days} days ago"
+                    
+                    st.caption(f"📅 {date_str} ({day_str}) | 🏷️ {r['related_to']}")
+                
+                st.divider() # ขีดเส้นใต้แต่ละรายการ
 
 # --- 8. Sidebar Admin (เวอร์ชันแก้ KeyError) ---
 with st.sidebar:
@@ -206,5 +248,6 @@ with st.sidebar:
                 
     elif pwd != "":
         st.error("รหัสผ่านไม่ถูกต้อง")
+
 
 
