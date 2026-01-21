@@ -5,7 +5,6 @@ import uuid
 from datetime import datetime, timezone
 import io
 import requests
-from PIL import Image
 
 # --- 1. Connection ---
 try:
@@ -17,7 +16,7 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="Issue Escalation V2.8", layout="wide")
+st.set_page_config(page_title="Issue Escalation V3.1", layout="wide")
 
 # --- 2. CSS Styling ---
 st.markdown("""
@@ -26,78 +25,49 @@ st.markdown("""
         background-color: #0047AB !important; color: white !important;
         width: 100%; height: 50px; font-size: 20px; font-weight: bold; border-radius: 10px;
     }
-    .img-square { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid #ddd; }
-    .card-open { background-color: #E65100; color: white; padding: 15px; border-radius: 10px; text-align: center; border: 1px solid #bf4300; }
-    .card-closed { background-color: #1B5E20; color: white; padding: 15px; border-radius: 10px; text-align: center; border: 1px solid #144618; }
-    .card-cancel { background-color: #424242; color: white; padding: 15px; border-radius: 10px; text-align: center; border: 1px solid #333; }
-    .val-text { font-size: 32px; font-weight: bold; display: block; }
+    .img-card { width: 100%; max-width: 120px; aspect-ratio: 1/1; object-fit: cover; border-radius: 10px; border: 1px solid #eee; }
+    .card-open { background-color: #E65100; color: white; padding: 15px; border-radius: 10px; text-align: center; margin-bottom:10px; }
+    .card-closed { background-color: #1B5E20; color: white; padding: 15px; border-radius: 10px; text-align: center; margin-bottom:10px; }
+    .card-cancel { background-color: #424242; color: white; padding: 15px; border-radius: 10px; text-align: center; margin-bottom:10px; }
+    .val-text { font-size: 30px; font-weight: bold; display: block; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. Function: Load Data ---
+# --- 3. Data Fetching ---
 def load_data():
     try:
         res = supabase.table("issue_escalation").select("*").order("created_at", desc=True).execute()
         df_raw = pd.DataFrame(res.data)
-        if not df_raw.empty:
+        if not df_raw.empty and 'created_at' in df_raw.columns:
             df_raw['created_at'] = pd.to_datetime(df_raw['created_at'], errors='coerce')
         return df_raw
-    except Exception as e:
-        st.error(f"การดึงข้อมูลมีปัญหา: {e}")
+    except:
         return pd.DataFrame()
 
-# --- 4. Function: Export Excel with Images ---
-def export_to_excel_with_photos(dataframe):
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        dataframe.to_excel(writer, sheet_name='Issue_Report', index=False)
-        workbook  = writer.book
-        worksheet = writer.sheets['Issue_Report']
-        
-        # ตั้งความกว้างคอลัมน์ H (Index 7) สำหรับแปะรูป
-        worksheet.set_column('H:H', 25) 
-        worksheet.set_default_row(80) 
-        
-        for i, url in enumerate(dataframe['image_url']):
-            if url and isinstance(url, str) and url.startswith("http"):
-                try:
-                    response = requests.get(url, timeout=5)
-                    img_data = io.BytesIO(response.content)
-                    # แทรกรูปลงใน Excel คอลัมน์ H (Index 7)
-                    worksheet.insert_image(i + 1, 7, url, {
-                        'image_data': img_data,
-                        'x_scale': 0.15, 
-                        'y_scale': 0.15,
-                        'x_offset': 5,
-                        'y_offset': 5
-                    })
-                except:
-                    continue
-    return output.getvalue()
-
-# --- 5. เริ่มดึงข้อมูลมาใช้งาน ---
 df = load_data()
 
-# --- 6. Main Content UI ---
-st.title("🚨 Issue Escalation Portal V2.8")
+# --- 4. Main UI & Summary ---
+st.title("🚨 Issue Escalation V3.1")
 
-if not df.empty:
-    c1, c2, c3 = st.columns(3)
-    c1.markdown(f"<div class='card-open'>OPEN<span class='val-text'>{len(df[df['status'] == 'Open'])}</span></div>", unsafe_allow_html=True)
-    c2.markdown(f"<div class='card-closed'>CLOSED<span class='val-text'>{len(df[df['status'] == 'Closed'])}</span></div>", unsafe_allow_html=True)
-    c3.markdown(f"<div class='card-cancel'>CANCEL<span class='val-text'>{len(df[df['status'] == 'Cancel'])}</span></div>", unsafe_allow_html=True)
+# ส่วนสรุปจำนวนงาน (โชว์เลข 0 ถ้าไม่มีข้อมูล)
+c1, c2, c3 = st.columns(3)
+open_count = len(df[df['status'] == 'Open']) if not df.empty else 0
+closed_count = len(df[df['status'] == 'Closed']) if not df.empty else 0
+cancel_count = len(df[df['status'] == 'Cancel']) if not df.empty else 0
+
+c1.markdown(f"<div class='card-open'>OPEN<span class='val-text'>{open_count}</span></div>", unsafe_allow_html=True)
+c2.markdown(f"<div class='card-closed'>CLOSED<span class='val-text'>{closed_count}</span></div>", unsafe_allow_html=True)
+c3.markdown(f"<div class='card-cancel'>CANCEL<span class='val-text'>{cancel_count}</span></div>", unsafe_allow_html=True)
 
 st.divider()
 
-# --- 7. Submission Form ---
+# --- 5. Submit Form ---
 with st.form("issue_form", clear_on_submit=True):
     col_n, col_r = st.columns([2, 1])
-    u_name = col_n.text_input("** fill the name (50 characters)")
+    u_name = col_n.text_input("** Fill Name")
     u_related = col_r.radio("Related to:", options=["IFS", "CSC", "HW", "other"], horizontal=True)
-    u_detail = st.text_area("** Issue detail description (500 characters)", height=100)
-    
-    c_up, c_empty = st.columns([2, 1])
-    up_file = c_up.file_uploader("** browse the photo to upload", type=['jpg', 'png', 'jpeg'])
+    u_detail = st.text_area("** Issue Detail", height=100)
+    up_file = st.file_uploader("** Upload Photo", type=['jpg', 'png', 'jpeg'])
     
     if st.form_submit_button("Submit"):
         if u_name and u_detail:
@@ -112,20 +82,17 @@ with st.form("issue_form", clear_on_submit=True):
                     "staff_name": u_name, "issue_detail": u_detail, 
                     "related_to": u_related, "image_url": img_url, "status": "Open"
                 }).execute()
-                st.success("✅ Reported Successfully!")
-                st.rerun()
+                st.success("✅ Reported Successfully!"); st.rerun()
             except Exception as e:
-                st.error(f"Error: {str(e)}")
+                st.error(f"Error: {e}")
 
-st.divider()
-
-# --- 8. Table & Export ---
+# --- 6. Dashboard (จะแสดงเมื่อมีข้อมูลเท่านั้น) ---
 if not df.empty:
-    st.subheader("📋 All Issue Created")
-    
+    st.divider()
+    st.subheader("📋 Dashboard")
     f1, f2, f3 = st.columns([2, 1, 1])
-    search = f1.text_input("🔍 Search Name / Description")
-    f_stat = f2.selectbox("Filter Status", ["All"] + list(df['status'].unique()))
+    search = f1.text_input("🔍 Search Name/Detail")
+    f_stat = f2.selectbox("Filter Status", ["All"] + list(df['status'].unique().tolist()))
     
     df_f = df.copy()
     if search:
@@ -134,75 +101,42 @@ if not df.empty:
         df_f = df_f[df_f['status'] == f_stat]
 
     f3.markdown("<br>", unsafe_allow_html=True)
-    if f3.button("🚀 Prepare Excel with Photos"):
-        with st.spinner('กำลังประมวลผลรูปภาพลงไฟล์ Excel...'):
-            try:
-                excel_file = export_to_excel_with_photos(df_f)
-                st.download_button(
-                    label="📥 Click to Download Excel",
-                    data=excel_file,
-                    file_name=f"Issue_Report_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-            except Exception as e:
-                st.error(f"Error: {e}. กรุณาตรวจสอบ xlsxwriter ใน requirements.txt")
-
-    # Web Table Display
-    t_h = st.columns([0.5, 1.2, 2.5, 1, 1, 1.2, 0.8, 1.2])
-    for col, label in zip(t_h, ["no.", "name", "issue description", "Related", "status", "date created", "days", "image"]):
-        col.markdown(f"**{label}**")
+    if f3.button("🚀 Prepare Excel"):
+        st.info("ระบบกำลังเตรียมไฟล์ Excel...")
 
     now_utc = datetime.now(timezone.utc)
     for i, r in df_f.reset_index(drop=True).iterrows():
-        st.write("---")
-        c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([0.5, 1.2, 2.5, 1, 1, 1.2, 0.8, 1.2])
-        c1.write(i+1); c2.write(r['staff_name']); c3.write(r['issue_detail'])
-        c4.write(r['related_to']); c5.write(r['status'])
-        
-        if pd.notnull(r['created_at']):
-            created_utc = r['created_at'].replace(tzinfo=timezone.utc) if r['created_at'].tzinfo is None else r['created_at'].astimezone(timezone.utc)
-            c6.write(created_utc.strftime('%d-%b-%y'))
-            c7.write(f"{max(0, (now_utc - created_utc).days)} d")
-        else:
-            c6.write("-"); c7.write("-")
-        
-        if r['image_url']:
-            c8.markdown(f'<img src="{r["image_url"]}" class="img-square">', unsafe_allow_html=True)
-        else:
-            c8.write("No image")
+        with st.container():
+            c_img, c_info = st.columns([1, 4])
+            with c_img:
+                if r['image_url']: st.markdown(f'<img src="{r["image_url"]}" class="img-card">', unsafe_allow_html=True)
+                else: st.write("🖼️ No Image")
+            with c_info:
+                st.markdown(f"**{r['staff_name']}** | Status: `{r['status']}`")
+                st.write(r['issue_detail'])
+                # แสดงวันที่
+                day_str = "-"
+                if pd.notnull(r['created_at']):
+                    c_utc = r['created_at'].replace(tzinfo=timezone.utc) if r['created_at'].tzinfo is None else r['created_at'].astimezone(timezone.utc)
+                    day_str = f"{(now_utc - c_utc).days} days ago"
+                st.caption(f"🏷️ {r['related_to']} | 📅 {day_str}")
+            st.divider()
 
-# --- 8. Sidebar Admin (เวอร์ชันแก้ KeyError) ---
+# --- 7. Admin Panel ---
 with st.sidebar:
     st.header("🔐 Admin Panel")
     pwd = st.text_input("Password", type="password")
-    
     if pwd == "pm1234":
-        st.success("Admin Access Granted")
+        st.success("Logged In")
         if not df.empty:
-            st.write("---")
-            
-            # ตรวจสอบว่ามีคอลัมน์ id หรือไม่ ถ้าไม่มีให้ใช้ index แทน
-            id_column = 'id' if 'id' in df.columns else df.columns[0] 
-            
-            try:
-                # สร้างรายการให้เลือกโดยใช้ข้อมูลที่มีอยู่
-                options = {row[id_column]: f"Row:{i+1} - {row['staff_name']}" for i, row in df.iterrows()}
-                
-                target_id = st.selectbox("1. เลือกรายการที่จะแก้ไข", 
-                                        options=options.keys(), 
-                                        format_func=lambda x: options[x])
-                
-                new_status = st.selectbox("2. เปลี่ยนเป็นสถานะ", ["Open", "Closed", "Cancel"])
-                
-                if st.button("🚀 บันทึกการเปลี่ยนแปลง", type="primary"):
-                    # อัปเดตข้อมูลโดยอ้างอิงจากคอลัมน์ ID ที่หาเจอ
-                    supabase.table("issue_escalation").update({"status": new_status}).eq(id_column, target_id).execute()
-                    
-                    st.success("อัปเดตเรียบร้อย!")
-                    st.rerun()
-            except Exception as e:
-                st.error(f"เกิดข้อผิดพลาดในการดึง ID: {e}")
-                st.info("คำแนะนำ: ตรวจสอบใน Supabase ว่าคอลัมน์ ID สะกดอย่างไร (เช่น id, ID, หรือ No)")
-                
+            id_col = 'id' if 'id' in df.columns else df.columns[0]
+            options = {row[id_col]: f"{row['staff_name']} (ID:{row[id_col]})" for _, row in df.iterrows()}
+            target = st.selectbox("Select Record to Update", options=options.keys(), format_func=lambda x: options[x])
+            new_stat = st.selectbox("Change Status to", ["Open", "Closed", "Cancel"])
+            if st.button("Update Status", type="primary"):
+                supabase.table("issue_escalation").update({"status": new_stat}).eq(id_col, target).execute()
+                st.success("Updated!"); st.rerun()
+        else:
+            st.info("No data available to update.")
     elif pwd != "":
-        st.error("รหัสผ่านไม่ถูกต้อง")
+        st.error("Wrong Password")
