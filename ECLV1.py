@@ -17,9 +17,9 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="Issue Escalation V2.6", layout="wide")
+st.set_page_config(page_title="Issue Escalation V2.7", layout="wide")
 
-# --- 2. CSS Styling ---
+# --- 2. CSS Styling (ส้มเข้ม / เขียวเข้ม / เทาเข้ม) ---
 st.markdown("""
     <style>
     div[data-testid="stFormSubmitButton"] > button {
@@ -35,7 +35,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 3. Data Fetching ---
-@st.cache_data(ttl=60)
 def load_data():
     try:
         res = supabase.table("issue_escalation").select("*").order("created_at", desc=True).execute()
@@ -51,35 +50,38 @@ df = load_data()
 # --- 4. Function: Export Excel with Images ---
 def export_to_excel(dataframe):
     output = io.BytesIO()
-    # ใช้ XlsxWriter เป็น Engine
+    # ระบุ engine='xlsxwriter' ให้ชัดเจน
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         dataframe.to_excel(writer, sheet_name='Issues', index=False)
         workbook  = writer.book
         worksheet = writer.sheets['Issues']
         
-        # ปรับความกว้างคอลัมน์และแถว
-        worksheet.set_column('H:H', 20) # คอลัมน์รูปภาพ
-        worksheet.set_default_row(70)    # ความสูงแถวเพื่อให้เห็นรูปชัด
+        # ปรับหัวตารางและขนาด
+        worksheet.set_column('H:H', 25) # คอลัมน์ image_url
+        worksheet.set_default_row(80)    # ความสูงแถว
         
         for i, url in enumerate(dataframe['image_url']):
-            if url:
+            if url and isinstance(url, str) and url.startswith("http"):
                 try:
-                    response = requests.get(url)
-                    image_data = io.BytesIO(response.content)
-                    # แทรกรูปภาพ (ย่อขนาดให้พอดีช่อง)
-                    worksheet.insert_image(i + 1, 7, url, {
-                        'image_data': image_data,
-                        'x_scale': 0.15, 
-                        'y_scale': 0.15,
-                        'x_offset': 5,
-                        'y_offset': 5
-                    })
+                    resp = requests.get(url, timeout=5)
+                    if resp.status_code == 200:
+                        img_data = io.BytesIO(resp.content)
+                        # แทรกรูปในคอลัมน์ I (index 8)
+                        worksheet.insert_image(i + 1, 8, url, {
+                            'image_data': img_data,
+                            'x_scale': 0.15, 
+                            'y_scale': 0.15,
+                            'x_offset': 5,
+                            'y_offset': 5,
+                            'positioning': 1
+                        })
                 except:
-                    worksheet.write(i + 1, 7, "Image Error")
+                    continue
     return output.getvalue()
 
-# --- 5. UI Header & Status Cards ---
-st.title("🚨 Issue Escalation Portal V2.6")
+# --- 5. UI Header ---
+st.title("🚨 Issue Escalation Portal V2.7")
+
 if not df.empty:
     c1, c2, c3 = st.columns(3)
     c1.markdown(f"<div class='card-open'>OPEN<span class='val-text'>{len(df[df['status'] == 'Open'])}</span></div>", unsafe_allow_html=True)
@@ -88,8 +90,8 @@ if not df.empty:
 
 st.divider()
 
-# --- 6. Form & Dashboard (เหมือน V2.5 แต่แก้ปุ่ม Export) ---
-# ... [ส่วน Code Submit Form เหมือนเดิม] ...
+# --- 6. Form & Table (ส่วนเดิม) ---
+# ... [ใส่ Code ส่วน Form และ Dashboard ของคุณพี่ไว้ตรงนี้] ...
 
 if not df.empty:
     st.subheader("📋 All Issue Created")
@@ -97,60 +99,21 @@ if not df.empty:
     search = f1.text_input("🔍 Search Name / Description")
     f_stat = f2.selectbox("Filter Status", ["All", "Open", "Closed", "Cancel"])
     
-    # Filter Data
     df_f = df.copy()
     if search:
         df_f = df_f[df_f['staff_name'].str.contains(search, case=False, na=False) | df_f['issue_detail'].str.contains(search, case=False, na=False)]
     if f_stat != "All":
         df_f = df_f[df_f['status'] == f_stat]
 
-    # --- ปุ่ม Export Excel (ที่มาแทน CSV) ---
-    excel_file = export_to_excel(df_f)
-    f3.markdown("<br>", unsafe_allow_html=True)
-    f3.download_button(
-        label="📥 Export Excel (With Photos)",
-        data=excel_file,
-        file_name=f"Issue_Report_{datetime.now().strftime('%Y%m%d')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    # ปุ่ม Export Excel
+    if st.button("🚀 Prepare Excel with Photos"):
+        with st.spinner('กำลังสร้างไฟล์พร้อมรูปภาพ...'):
+            excel_file = export_to_excel(df_f)
+            st.download_button(
+                label="📥 Click here to Download Excel",
+                data=excel_file,
+                file_name=f"Issue_Report_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 
-    # --- ส่วนตาราง Dashboard แสดงผลบนเว็บ ---
-    t_h = st.columns([0.5, 1.2, 2.5, 1, 1, 1.2, 0.8, 1.2])
-    for col, label in zip(t_h, ["no.", "name", "issue description", "Related", "status", "date created", "days", "image"]):
-        col.markdown(f"**{label}**")
-
-    now_utc = datetime.now(timezone.utc)
-    for i, r in df_f.reset_index(drop=True).iterrows():
-        st.write("---")
-        c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([0.5, 1.2, 2.5, 1, 1, 1.2, 0.8, 1.2])
-        c1.write(i+1)
-        c2.write(r['staff_name'])
-        c3.write(r['issue_detail'])
-        c4.write(r['related_to'])
-        c5.write(r['status'])
-        
-        if pd.notnull(r['created_at']):
-            created_utc = r['created_at'].replace(tzinfo=timezone.utc) if r['created_at'].tzinfo is None else r['created_at'].astimezone(timezone.utc)
-            c6.write(created_utc.strftime('%d-%b-%y'))
-            days = (now_utc - created_utc).days
-            c7.write(f"{max(0, days)} d")
-        else:
-            c6.write("-"); c7.write("-")
-        
-        if r['image_url']:
-            c8.markdown(f'<img src="{r["image_url"]}" class="img-square">', unsafe_allow_html=True)
-        else:
-            c8.write("No image")
-
-# --- 7. Admin Panel ---
-with st.sidebar:
-    st.header("🔐 Admin")
-    pwd = st.text_input("Password", type="password")
-    if pwd == "pm1234":
-        if not df.empty:
-            target_id = st.selectbox("Update ID", options=df['id'].tolist())
-            new_status = st.selectbox("New Status", ["Open", "Closed", "Cancel"])
-            if st.button("Update"):
-                supabase.table("issue_escalation").update({"status": new_status}).eq("id", target_id).execute()
-                st.cache_data.clear()
-                st.rerun()
+    # ส่วนแสดงผลตาราง Dashboard...
