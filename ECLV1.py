@@ -34,7 +34,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. Data Fetching ---
+# --- 3. Function: Load Data ---
 def load_data():
     try:
         res = supabase.table("issue_escalation").select("*").order("created_at", desc=True).execute()
@@ -42,20 +42,20 @@ def load_data():
         if not df_raw.empty:
             df_raw['created_at'] = pd.to_datetime(df_raw['created_at'], errors='coerce')
         return df_raw
-    except:
+    except Exception as e:
+        st.error(f"การดึงข้อมูลมีปัญหา: {e}")
         return pd.DataFrame()
 
-# --- 4. Function: Export Excel with Images (The one causing error if missing lib) ---
+# --- 4. Function: Export Excel with Images ---
 def export_to_excel_with_photos(dataframe):
     output = io.BytesIO()
-    # Engine 'xlsxwriter' ต้องการการติดตั้งผ่าน requirements.txt
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         dataframe.to_excel(writer, sheet_name='Issue_Report', index=False)
         workbook  = writer.book
         worksheet = writer.sheets['Issue_Report']
         
-        # ปรับขนาดคอลัมน์ H (Index 7) และ I (Index 8) สำหรับแปะรูป
-        worksheet.set_column('H:I', 25) 
+        # ตั้งความกว้างคอลัมน์ H (Index 7) สำหรับแปะรูป
+        worksheet.set_column('H:H', 25) 
         worksheet.set_default_row(80) 
         
         for i, url in enumerate(dataframe['image_url']):
@@ -63,34 +63,33 @@ def export_to_excel_with_photos(dataframe):
                 try:
                     response = requests.get(url, timeout=5)
                     img_data = io.BytesIO(response.content)
-                    
-                    # แทรกรูปลงใน Excel คอลัมน์ I (Index 8)
-                    worksheet.insert_image(i + 1, 8, url, {
+                    # แทรกรูปลงใน Excel คอลัมน์ H (Index 7)
+                    worksheet.insert_image(i + 1, 7, url, {
                         'image_data': img_data,
                         'x_scale': 0.15, 
                         'y_scale': 0.15,
                         'x_offset': 5,
-                        'y_offset': 5,
-                        'positioning': 1
+                        'y_offset': 5
                     })
                 except:
                     continue
     return output.getvalue()
 
-# --- 5. Main Content ---
-def load_data():
-    try:
-        res = supabase.table("issue_escalation").select("*").order("created_at", desc=True).execute()
-        df_raw = pd.DataFrame(res.data)
-        if not df_raw.empty:
-            # เพิ่มบรรทัดนี้เพื่อป้องกัน Error จากค่าวันที่ว่าง
-            df_raw['created_at'] = pd.to_datetime(df_raw['created_at'], errors='coerce')
-        return df_raw
-    except Exception as e:
-        st.error(f"การดึงข้อมูลมีปัญหา: {e}")
-        return pd.DataFrame()
+# --- 5. เริ่มดึงข้อมูลมาใช้งาน ---
+df = load_data()
 
-# --- 6. Form ---
+# --- 6. Main Content UI ---
+st.title("🚨 Issue Escalation Portal V2.8")
+
+if not df.empty:
+    c1, c2, c3 = st.columns(3)
+    c1.markdown(f"<div class='card-open'>OPEN<span class='val-text'>{len(df[df['status'] == 'Open'])}</span></div>", unsafe_allow_html=True)
+    c2.markdown(f"<div class='card-closed'>CLOSED<span class='val-text'>{len(df[df['status'] == 'Closed'])}</span></div>", unsafe_allow_html=True)
+    c3.markdown(f"<div class='card-cancel'>CANCEL<span class='val-text'>{len(df[df['status'] == 'Cancel'])}</span></div>", unsafe_allow_html=True)
+
+st.divider()
+
+# --- 7. Submission Form ---
 with st.form("issue_form", clear_on_submit=True):
     col_n, col_r = st.columns([2, 1])
     u_name = col_n.text_input("** fill the name (50 characters)")
@@ -120,7 +119,7 @@ with st.form("issue_form", clear_on_submit=True):
 
 st.divider()
 
-# --- 7. Table & Export ---
+# --- 8. Table & Export ---
 if not df.empty:
     st.subheader("📋 All Issue Created")
     
@@ -134,7 +133,6 @@ if not df.empty:
     if f_stat != "All":
         df_f = df_f[df_f['status'] == f_stat]
 
-    # Export Button (ต้องติดตั้ง xlsxwriter ก่อนถึงจะทำงานได้)
     f3.markdown("<br>", unsafe_allow_html=True)
     if f3.button("🚀 Prepare Excel with Photos"):
         with st.spinner('กำลังประมวลผลรูปภาพลงไฟล์ Excel...'):
@@ -147,9 +145,9 @@ if not df.empty:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
             except Exception as e:
-                st.error("กรุณาตรวจสอบว่าได้เพิ่ม xlsxwriter ใน requirements.txt หรือยัง")
+                st.error(f"Error: {e}. กรุณาตรวจสอบ xlsxwriter ใน requirements.txt")
 
-    # Display Table
+    # Web Table Display
     t_h = st.columns([0.5, 1.2, 2.5, 1, 1, 1.2, 0.8, 1.2])
     for col, label in zip(t_h, ["no.", "name", "issue description", "Related", "status", "date created", "days", "image"]):
         col.markdown(f"**{label}**")
@@ -173,7 +171,7 @@ if not df.empty:
         else:
             c8.write("No image")
 
-# --- 8. Sidebar Admin ---
+# --- 9. Sidebar Admin ---
 with st.sidebar:
     st.header("🔐 Admin")
     pwd = st.text_input("Password", type="password")
@@ -183,6 +181,4 @@ with st.sidebar:
             new_status = st.selectbox("New Status", ["Open", "Closed", "Cancel"])
             if st.button("Confirm Update"):
                 supabase.table("issue_escalation").update({"status": new_status}).eq("id", target_id).execute()
-                st.cache_data.clear()
                 st.rerun()
-
