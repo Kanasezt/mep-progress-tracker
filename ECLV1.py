@@ -3,6 +3,9 @@ import pandas as pd
 from supabase import create_client, Client
 import uuid
 from datetime import datetime, timezone
+import io
+import requests
+from PIL import Image
 
 # --- 1. Connection ---
 try:
@@ -14,7 +17,7 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="Issue Escalation V2.5.1", layout="wide")
+st.set_page_config(page_title="Issue Escalation V2.8", layout="wide")
 
 # --- 2. CSS Styling ---
 st.markdown("""
@@ -31,7 +34,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. Data Fetching ---
+# --- 3. Function: Fetch Data ---
 def load_data():
     try:
         res = supabase.table("issue_escalation").select("*").order("created_at", desc=True).execute()
@@ -42,10 +45,42 @@ def load_data():
     except:
         return pd.DataFrame()
 
-df = load_data()
+# --- 4. Function: Export Excel with Photos ---
+def export_to_excel_with_photos(dataframe):
+    output = io.BytesIO()
+    # ใช้ xlsxwriter เพื่อให้แปะรูปได้
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        dataframe.to_excel(writer, sheet_name='Issue_Report', index=False)
+        workbook  = writer.book
+        worksheet = writer.sheets['Issue_Report']
+        
+        # ตั้งค่าหัวตาราง และขนาด
+        worksheet.set_column('H:H', 25) # คอลัมน์ image_url
+        worksheet.set_column('I:I', 25) # คอลัมน์ที่จะแปะรูป (ถ้ามีเพิ่ม)
+        worksheet.set_default_row(80)    # ความสูงแถว
+        
+        for i, url in enumerate(dataframe['image_url']):
+            if url and isinstance(url, str) and url.startswith("http"):
+                try:
+                    response = requests.get(url, timeout=5)
+                    img_data = io.BytesIO(response.content)
+                    
+                    # แทรกรูปลงใน Excel (คอลัมน์ I คือ Index 8)
+                    worksheet.insert_image(i + 1, 8, url, {
+                        'image_data': img_data,
+                        'x_scale': 0.15, 
+                        'y_scale': 0.15,
+                        'x_offset': 5,
+                        'y_offset': 5,
+                        'positioning': 1
+                    })
+                except:
+                    continue
+    return output.getvalue()
 
-# --- 4. Overall Status ---
-st.title("🚨 Issue Escalation Portal V2.5.1")
+# --- 5. Main UI ---
+df = load_data()
+st.title("🚨 Issue Escalation Portal V2.8")
 
 if not df.empty:
     c1, c2, c3 = st.columns(3)
@@ -55,7 +90,7 @@ if not df.empty:
 
 st.divider()
 
-# --- 5. Submit Form ---
+# --- 6. Submit Form ---
 with st.form("issue_form", clear_on_submit=True):
     col_n, col_r = st.columns([2, 1])
     u_name = col_n.text_input("** fill the name (50 characters)")
@@ -85,7 +120,7 @@ with st.form("issue_form", clear_on_submit=True):
 
 st.divider()
 
-# --- 6. Dashboard Table ---
+# --- 7. Dashboard Table & Export ---
 if not df.empty:
     st.subheader("📋 All Issue Created")
     
@@ -93,25 +128,28 @@ if not df.empty:
     search = f1.text_input("🔍 Search Name / Description")
     f_stat = f2.selectbox("Filter Status", ["All"] + list(df['status'].unique()))
     
-    # แก้ไขส่วน Export: ทำให้ Link ใน Excel คลิกได้เลย
-    df_export = df.copy()
-    if 'image_url' in df_export.columns:
-        df_export['image_link'] = df_export['image_url'].apply(lambda x: f'=HYPERLINK("{x}", "Click to View")' if x else "")
-    
-    csv_data = df_export.to_csv(index=False).encode('utf-8-sig')
-    f3.markdown("<br>", unsafe_allow_html=True)
-    f3.download_button("📥 Export CSV", data=csv_data, file_name=f"issue_report_{datetime.now().strftime('%Y%m%d')}.csv")
-
+    # Filter Data
     df_f = df.copy()
     if search:
         df_f = df_f[df_f['staff_name'].str.contains(search, case=False, na=False) | df_f['issue_detail'].str.contains(search, case=False, na=False)]
     if f_stat != "All":
         df_f = df_f[df_f['status'] == f_stat]
 
-    # Table Header
+    # Export Button (New Logic)
+    f3.markdown("<br>", unsafe_allow_html=True)
+    if f3.button("🚀 Prepare Excel with Photos"):
+        with st.spinner('กำลังสร้างไฟล์รายงานพร้อมรูปภาพ...'):
+            excel_file = export_to_excel_with_photos(df_f)
+            st.download_button(
+                label="📥 Download Report Now",
+                data=excel_file,
+                file_name=f"Issue_Report_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+    # Web Table Display
     t_h = st.columns([0.5, 1.2, 2.5, 1, 1, 1.2, 0.8, 1.2])
-    labels = ["no.", "name", "issue description", "Related", "status", "date created", "days", "image"]
-    for col, label in zip(t_h, labels):
+    for col, label in zip(t_h, ["no.", "name", "issue description", "Related", "status", "date created", "days", "image"]):
         col.markdown(f"**{label}**")
 
     now_utc = datetime.now(timezone.utc)
@@ -134,11 +172,11 @@ if not df.empty:
         
         if r['image_url']:
             c8.markdown(f'<img src="{r["image_url"]}" class="img-square">', unsafe_allow_html=True)
-            c8.markdown(f"[🔗 Open]({r['image_url']})")
+            c8.markdown(f"[🔗 Open Link]({r['image_url']})")
         else:
             c8.write("No image")
 
-# --- 7. Admin Panel ---
+# --- 8. Admin Panel ---
 with st.sidebar:
     st.header("🔐 Admin Panel")
     pwd = st.text_input("Password", type="password")
@@ -146,10 +184,8 @@ with st.sidebar:
         st.success("Admin Access Granted")
         if not df.empty:
             options = {row['id']: f"ID:{row['id']} - {row['staff_name']}" for _, row in df.iterrows()}
-            target_id = st.selectbox("Select ID to update", options=options.keys(), format_func=lambda x: options[x])
+            target_id = st.selectbox("Update Status ID", options=options.keys(), format_func=lambda x: options[x])
             new_status = st.selectbox("New Status", ["Open", "Closed", "Cancel"])
-            if st.button("Update Status", type="primary"):
+            if st.button("Update Status"):
                 supabase.table("issue_escalation").update({"status": new_status}).eq("id", target_id).execute()
                 st.rerun()
-    elif pwd != "":
-        st.error("Wrong Password")
