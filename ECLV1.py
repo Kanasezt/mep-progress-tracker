@@ -34,7 +34,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. Function: Fetch Data ---
+# --- 3. Data Fetching ---
 def load_data():
     try:
         res = supabase.table("issue_escalation").select("*").order("created_at", desc=True).execute()
@@ -45,19 +45,18 @@ def load_data():
     except:
         return pd.DataFrame()
 
-# --- 4. Function: Export Excel with Photos ---
+# --- 4. Function: Export Excel with Images (The one causing error if missing lib) ---
 def export_to_excel_with_photos(dataframe):
     output = io.BytesIO()
-    # ใช้ xlsxwriter เพื่อให้แปะรูปได้
+    # Engine 'xlsxwriter' ต้องการการติดตั้งผ่าน requirements.txt
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         dataframe.to_excel(writer, sheet_name='Issue_Report', index=False)
         workbook  = writer.book
         worksheet = writer.sheets['Issue_Report']
         
-        # ตั้งค่าหัวตาราง และขนาด
-        worksheet.set_column('H:H', 25) # คอลัมน์ image_url
-        worksheet.set_column('I:I', 25) # คอลัมน์ที่จะแปะรูป (ถ้ามีเพิ่ม)
-        worksheet.set_default_row(80)    # ความสูงแถว
+        # ปรับขนาดคอลัมน์ H (Index 7) และ I (Index 8) สำหรับแปะรูป
+        worksheet.set_column('H:I', 25) 
+        worksheet.set_default_row(80) 
         
         for i, url in enumerate(dataframe['image_url']):
             if url and isinstance(url, str) and url.startswith("http"):
@@ -65,7 +64,7 @@ def export_to_excel_with_photos(dataframe):
                     response = requests.get(url, timeout=5)
                     img_data = io.BytesIO(response.content)
                     
-                    # แทรกรูปลงใน Excel (คอลัมน์ I คือ Index 8)
+                    # แทรกรูปลงใน Excel คอลัมน์ I (Index 8)
                     worksheet.insert_image(i + 1, 8, url, {
                         'image_data': img_data,
                         'x_scale': 0.15, 
@@ -78,7 +77,7 @@ def export_to_excel_with_photos(dataframe):
                     continue
     return output.getvalue()
 
-# --- 5. Main UI ---
+# --- 5. Main Content ---
 df = load_data()
 st.title("🚨 Issue Escalation Portal V2.8")
 
@@ -90,7 +89,7 @@ if not df.empty:
 
 st.divider()
 
-# --- 6. Submit Form ---
+# --- 6. Form ---
 with st.form("issue_form", clear_on_submit=True):
     col_n, col_r = st.columns([2, 1])
     u_name = col_n.text_input("** fill the name (50 characters)")
@@ -120,7 +119,7 @@ with st.form("issue_form", clear_on_submit=True):
 
 st.divider()
 
-# --- 7. Dashboard Table & Export ---
+# --- 7. Table & Export ---
 if not df.empty:
     st.subheader("📋 All Issue Created")
     
@@ -128,26 +127,28 @@ if not df.empty:
     search = f1.text_input("🔍 Search Name / Description")
     f_stat = f2.selectbox("Filter Status", ["All"] + list(df['status'].unique()))
     
-    # Filter Data
     df_f = df.copy()
     if search:
         df_f = df_f[df_f['staff_name'].str.contains(search, case=False, na=False) | df_f['issue_detail'].str.contains(search, case=False, na=False)]
     if f_stat != "All":
         df_f = df_f[df_f['status'] == f_stat]
 
-    # Export Button (New Logic)
+    # Export Button (ต้องติดตั้ง xlsxwriter ก่อนถึงจะทำงานได้)
     f3.markdown("<br>", unsafe_allow_html=True)
     if f3.button("🚀 Prepare Excel with Photos"):
-        with st.spinner('กำลังสร้างไฟล์รายงานพร้อมรูปภาพ...'):
-            excel_file = export_to_excel_with_photos(df_f)
-            st.download_button(
-                label="📥 Download Report Now",
-                data=excel_file,
-                file_name=f"Issue_Report_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+        with st.spinner('กำลังประมวลผลรูปภาพลงไฟล์ Excel...'):
+            try:
+                excel_file = export_to_excel_with_photos(df_f)
+                st.download_button(
+                    label="📥 Click to Download Excel",
+                    data=excel_file,
+                    file_name=f"Issue_Report_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            except Exception as e:
+                st.error("กรุณาตรวจสอบว่าได้เพิ่ม xlsxwriter ใน requirements.txt หรือยัง")
 
-    # Web Table Display
+    # Display Table
     t_h = st.columns([0.5, 1.2, 2.5, 1, 1, 1.2, 0.8, 1.2])
     for col, label in zip(t_h, ["no.", "name", "issue description", "Related", "status", "date created", "days", "image"]):
         col.markdown(f"**{label}**")
@@ -156,36 +157,30 @@ if not df.empty:
     for i, r in df_f.reset_index(drop=True).iterrows():
         st.write("---")
         c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([0.5, 1.2, 2.5, 1, 1, 1.2, 0.8, 1.2])
-        c1.write(i+1)
-        c2.write(r['staff_name'])
-        c3.write(r['issue_detail'])
-        c4.write(r['related_to'])
-        c5.write(r['status'])
+        c1.write(i+1); c2.write(r['staff_name']); c3.write(r['issue_detail'])
+        c4.write(r['related_to']); c5.write(r['status'])
         
         if pd.notnull(r['created_at']):
             created_utc = r['created_at'].replace(tzinfo=timezone.utc) if r['created_at'].tzinfo is None else r['created_at'].astimezone(timezone.utc)
             c6.write(created_utc.strftime('%d-%b-%y'))
-            days = (now_utc - created_utc).days
-            c7.write(f"{max(0, days)} d")
+            c7.write(f"{max(0, (now_utc - created_utc).days)} d")
         else:
             c6.write("-"); c7.write("-")
         
         if r['image_url']:
             c8.markdown(f'<img src="{r["image_url"]}" class="img-square">', unsafe_allow_html=True)
-            c8.markdown(f"[🔗 Open Link]({r['image_url']})")
         else:
             c8.write("No image")
 
-# --- 8. Admin Panel ---
+# --- 8. Sidebar Admin ---
 with st.sidebar:
-    st.header("🔐 Admin Panel")
+    st.header("🔐 Admin")
     pwd = st.text_input("Password", type="password")
     if pwd == "pm1234":
-        st.success("Admin Access Granted")
         if not df.empty:
-            options = {row['id']: f"ID:{row['id']} - {row['staff_name']}" for _, row in df.iterrows()}
-            target_id = st.selectbox("Update Status ID", options=options.keys(), format_func=lambda x: options[x])
+            target_id = st.selectbox("Update ID", options=df['id'].tolist())
             new_status = st.selectbox("New Status", ["Open", "Closed", "Cancel"])
-            if st.button("Update Status"):
+            if st.button("Confirm Update"):
                 supabase.table("issue_escalation").update({"status": new_status}).eq("id", target_id).execute()
+                st.cache_data.clear()
                 st.rerun()
