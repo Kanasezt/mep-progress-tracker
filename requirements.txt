@@ -4,3 +4,4 @@ supabase
 xlsxwriter
 Pillow
 requests
+plotly
