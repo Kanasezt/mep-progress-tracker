@@ -3,7 +3,7 @@ import pandas as pd
 from supabase import create_client, Client
 import plotly.express as px
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import io
 
 # --- 1. Connection ---
@@ -51,7 +51,8 @@ df_raw, df_tasks = load_all_data()
 
 min_date = datetime.now().date()
 if not df_raw.empty:
-    df_raw['created_at'] = pd.to_datetime(df_raw['created_at']).dt.tz_localize(None)
+    # Convert to Asia/Bangkok for display
+    df_raw['created_at'] = pd.to_datetime(df_raw['created_at']).dt.tz_convert('Asia/Bangkok').dt.tz_localize(None)
     min_date = df_raw['created_at'].min().date()
 
 # --- 3. Function: Upload Form ---
@@ -97,9 +98,8 @@ def show_upload_form(show_dash_btn=False):
         staff_list = ["", "Puwanai Torpradit", "Zhangxi (Sea)", "Puripat Nammontree", "Ravicha Thaisiam", "Kraiwut Chaiyarak", "Sakda Suwan", "Thanadol Chanpattanakij", "Thanakit Thundon", "Anu Yaemsajja", "Chawalit Posrima", "Amnat Pagamas", "Thotsapon Sripornwong", "Tanupat mongkholkan", "Putthipong Niyomkitjakankul", "Ekkapol Tangngamsakul", "Natthaphat Suwanmanee", "Kantapon Phasee", "Chatchai Sripradoo", "Chatchai Chanprasert", "Jirapat Phobtavorn", "Thanadon Tuydoi (Tontan)", "Pimchanok Janjamsai"]
         u_by = st.selectbox("Select Your Name", options=staff_list)
         
-        # Stat input follows the unit and max qty from Excel
         stat = st.number_input(f"New Progress ({u_unit})", min_value=0.0, max_value=float(total_max), value=float(current_p))
-        st.markdown(f"<div class='qty-hint'>Cannot be less than current ({current_p}) or more than total ({total_max})</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='qty-hint'>Cannot be less than {current_p} or more than {total_max}</div>", unsafe_allow_html=True)
         
         up_file = st.file_uploader("Photo Progress", type=['jpg', 'png', 'jpeg'])
         
@@ -116,12 +116,16 @@ def show_upload_form(show_dash_btn=False):
                         supabase.storage.from_('images').upload(f_name, up_file.read())
                         img_url = supabase.storage.from_('images').get_public_url(f_name)
                     
+                    # FORCE GMT+7 Time
+                    now_th = datetime.now(timezone(timedelta(hours=7))).isoformat()
+                    
                     supabase.table("construction_progress").insert({
                         "task_name": task_name, "update_by": u_by, 
                         "status": stat, "image_url": img_url,
-                        "category": u_cat, "unit": u_unit, "total_qty": total_max
+                        "category": u_cat, "unit": u_unit, "total_qty": total_max,
+                        "created_at": now_th
                     }).execute()
-                    st.cache_data.clear(); st.success("Recorded!"); st.rerun()
+                    st.cache_data.clear(); st.success("✅ Recorded (GMT+7)!"); st.rerun()
             else: st.error("Please fill Name and select a Task")
 
 # --- 4. Main App Logic ---
@@ -147,7 +151,6 @@ else:
             imp_file = st.file_uploader("Upload 'Import V1.xlsx'", type=['xlsx'])
             if imp_file and st.button("Confirm Excel Import"):
                 df_imp = pd.read_excel(imp_file)
-                # Map A=Desc, B=Cat, C=Total, D=Unit
                 df_imp = df_imp.iloc[:, 0:4]
                 df_imp.columns = ['task_name', 'category', 'total_qty', 'unit']
                 
@@ -172,27 +175,28 @@ else:
         df_f = df_raw[mask].copy()
 
         if not df_f.empty:
-            df_latest = df_f.sort_values('created_at', ascending=False).drop_duplicates('task_name')
+            # --- Export CSV Button ---
+            df_csv_export = df_f.copy()
+            df_csv_export['Date'] = df_csv_export['created_at'].dt.strftime('%d-%b-%Y')
+            df_csv_export['Time'] = df_csv_export['created_at'].dt.strftime('%H:%M:%S')
             
-            # 1. Clean data types for math
+            csv_data = df_csv_export[['task_name', 'category', 'update_by', 'status', 'total_qty', 'unit', 'Date', 'Time']].to_csv(index=False).encode('utf-8-sig')
+            st.download_button(label="📥 Export Progress to CSV", data=csv_data, file_name=f"MEP_Report_{datetime.now().strftime('%Y%m%d')}.csv", mime='text/csv')
+
+            # --- Chart Logic ---
+            df_latest = df_f.sort_values('created_at', ascending=False).drop_duplicates('task_name')
             df_latest['status'] = pd.to_numeric(df_latest['status'], errors='coerce').fillna(0)
             df_latest['total_qty'] = pd.to_numeric(df_latest['total_qty'], errors='coerce').fillna(1)
             
-            # 2. Calculate Percentage for Chart
             df_latest['pct'] = (df_latest['status'] / df_latest['total_qty']) * 100
             df_latest['display_label'] = df_latest.apply(lambda x: f"{x['update_by'] : <12} | {x['task_name']}", axis=1)
             
             st.subheader("📊 Progress Overview (%)")
-            
-            fig = px.bar(df_latest, x='pct', y='display_label', orientation='h', 
-                         range_x=[0, 125], color_discrete_sequence=['#FFD1D1'])
-            
-            # Show actual values and units on label
+            fig = px.bar(df_latest, x='pct', y='display_label', orientation='h', range_x=[0, 125], color_discrete_sequence=['#FFD1D1'])
             fig.update_traces(
                 text=df_latest.apply(lambda x: f"{x['pct']:.1f}% ({x['status']}/{x['total_qty']} {x.get('unit', '')})", axis=1), 
                 textposition='outside', textfont_size=16, cliponaxis=False 
             )
-
             fig.update_layout(
                 xaxis_title="Completion Percentage", height=max(400, len(df_latest)*50), 
                 yaxis_title="", margin=dict(l=280, r=60, t=20, b=20), 
