@@ -53,9 +53,8 @@ df_raw, df_tasks = load_all_data()
 min_date = datetime(2026, 3, 1).date()
 
 if not df_raw.empty:
-    # We use tz_convert to handle the GMT+7 display properly
+    # 2. Process the timezone conversion
     df_raw['created_at'] = pd.to_datetime(df_raw['created_at']).dt.tz_convert('Asia/Bangkok').dt.tz_localize(None)
-    min_date = df_raw['created_at'].min().date()
 
 # --- 3. Function: Upload Form ---
 def show_upload_form(show_dash_btn=False):
