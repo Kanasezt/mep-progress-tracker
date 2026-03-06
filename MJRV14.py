@@ -53,8 +53,8 @@ df_raw, df_tasks = load_all_data()
 min_date = datetime(2026, 3, 1).date()
 
 if not df_raw.empty:
-    # 2. Process the timezone conversion
     df_raw['created_at'] = pd.to_datetime(df_raw['created_at']).dt.tz_convert('Asia/Bangkok').dt.tz_localize(None)
+
 
 # --- 3. Function: Upload Form ---
 def show_upload_form(show_dash_btn=False):
@@ -173,10 +173,10 @@ else:
 
     c1, c2 = st.columns(2)
     start_d = c1.date_input("From date", min_date) 
-    end_d = c2.date_input("To date", datetime.now().date())
+    # Forces Bangkok Today
+    today_th = (datetime.now(timezone(timedelta(hours=7)))).date()
+    end_d = c2.date_input("To date", today_th)
 
-    if not df_raw.empty:
-        df_raw['created_at'] = pd.to_datetime(df_raw['created_at']).dt.tz_convert('Asia/Bangkok').dt.tz_localize(None)
     
         if not df_f.empty:
             # --- ADDED: CSV Export Logic ---
