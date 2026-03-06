@@ -49,7 +49,8 @@ def load_all_data():
 
 df_raw, df_tasks = load_all_data()
 
-min_date = datetime.now().date()
+# Set this to your actual project start date (e.g., March 1st, 2026)
+min_date = datetime(2026, 3, 1).date()
 if not df_raw.empty:
     # We use tz_convert to handle the GMT+7 display properly
     df_raw['created_at'] = pd.to_datetime(df_raw['created_at']).dt.tz_convert('Asia/Bangkok').dt.tz_localize(None)
@@ -172,7 +173,7 @@ else:
 
     c1, c2 = st.columns(2)
     start_d = c1.date_input("From date", min_date) 
-    end_d = c2.date_input("To date", datetime.now())
+    end_d = c2.date_input("To date", datetime.now().date())
 
     if not df_raw.empty:
         mask = (df_raw['created_at'].dt.date >= start_d) & (df_raw['created_at'].dt.date <= end_d)
