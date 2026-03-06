@@ -180,7 +180,7 @@ else:
                 text=df_latest.apply(lambda x: f"{x['pct']:.1f}% ({x['status']}/{x['total_qty']} {x.get('unit', '')})", axis=1), 
                 textposition='outside', textfont_size=16, cliponaxis=False 
             )
-            fig.update_layout(xaxis_title="Completion (%)", height=max(400, len(df_latest)*50), yaxis_title="", margin=dict(l=280, r=60, t=20, b=20), yaxis=dict(autorange="reversed", tickfont=dict(family="Calibri", size=14)))
+            fig.update_layout(xaxis_title="Completion (%)", height=max(400, len(df_latest)*50), yaxis_title="", margin=dict(l=280, r=60, t=20, b=20), yaxis=dict(autorange="reversed", tickfont=dict(family="Candara", size=16)))
             st.plotly_chart(fig, use_container_width=True)
 
             st.divider(); st.subheader("📸 Photo Progress")
