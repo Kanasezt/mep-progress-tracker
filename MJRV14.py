@@ -176,9 +176,8 @@ else:
     end_d = c2.date_input("To date", datetime.now().date())
 
     if not df_raw.empty:
-        mask = (df_raw['created_at'].dt.date >= start_d) & (df_raw['created_at'].dt.date <= end_d)
-        df_f = df_raw[mask].copy()
-
+        df_raw['created_at'] = pd.to_datetime(df_raw['created_at']).dt.tz_convert('Asia/Bangkok').dt.tz_localize(None)
+    
         if not df_f.empty:
             # --- ADDED: CSV Export Logic ---
             csv_data = df_f.to_csv(index=False).encode('utf-8-sig')
