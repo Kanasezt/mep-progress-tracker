@@ -18,75 +18,95 @@ supabase: Client = create_client(URL, KEY)
 
 st.set_page_config(page_title="MEP Tracker V45", layout="wide")
 
-# --- CSS Styling ---
+# --- CSS Styling (Kept from your V44) ---
 st.markdown("""
     <style>
     .block-container { padding-top: 1.5rem !important; padding-bottom: 1rem !important; }
+    .dashboard-link {
+        float: right; text-decoration: none !important; background-color: #FF4B4B !important;
+        color: white !important; padding: 10px 20px; border-radius: 8px;
+        font-weight: bold; font-size: 14px; display: inline-block; border: none;
+    }
     div[data-testid="stFormSubmitButton"] > button {
-        background-color: #0047AB !important; color: white !important; border-radius: 8px; width: 100%;
+        background-color: #0047AB !important; 
+        color: white !important;
+        border: 1px solid #0047AB !important;
+        width: 100%;
     }
     .qty-hint { color: #666; font-size: 0.85rem; margin-top: -10px; margin-bottom: 10px; }
     </style>
 """, unsafe_allow_html=True)
 
 # --- 2. Data Fetching ---
-@st.cache_data(ttl=10)
-def fetch_all_data():
-    res_progress = supabase.table("construction_progress").select("*").execute()
-    res_tasks = supabase.table("task_master").select("*").execute()
-    return pd.DataFrame(res_progress.data), pd.DataFrame(res_tasks.data)
+@st.cache_data(ttl=5)
+def load_all_data():
+    res_prog = supabase.table("construction_progress").select("*").execute()
+    res_task = supabase.table("task_master").select("*").execute()
+    return pd.DataFrame(res_prog.data), pd.DataFrame(res_task.data)
 
-df_raw, df_tasks = fetch_all_data()
+df_raw, df_tasks = load_all_data()
 
-# --- 3. Upload & Validation Logic ---
-def show_upload_form():
-    st.header("🏗️ Update Progress")
-    
+min_date = datetime.now().date()
+if not df_raw.empty:
+    df_raw['created_at'] = pd.to_datetime(df_raw['created_at']).dt.tz_localize(None)
+    min_date = df_raw['created_at'].min().date()
+
+# --- 3. Function: Upload Form (Updated with your new logic) ---
+def show_upload_form(show_dash_btn=False):
+    col_t, col_b = st.columns([3, 1])
+    with col_t: st.header("🏗️ Update Progress")
+    if show_dash_btn:
+        with col_b: st.markdown('<br><a href="/?page=dashboard" target="_self" class="dashboard-link">📊 View Dashboard</a>', unsafe_allow_html=True)
+
     if df_tasks.empty:
-        st.warning("Please import Task Master data in Admin mode first.")
+        st.warning("⚠️ No Task Master data found. Admin must import 'Import V1.xlsx' first.")
         return
 
-    # 1. Category Filter
-    categories = sorted(df_tasks['category'].unique().tolist())
-    selected_cat = st.selectbox("Select Category", options=[""] + categories)
+    # 1. New Category Filter
+    cats = sorted(df_tasks['category'].unique().tolist())
+    u_cat = st.selectbox("1. Select Category", options=[""] + cats)
 
-    # 2. Task Name (Filtered by Category)
-    task_options = []
-    if selected_cat:
-        task_options = df_tasks[df_tasks['category'] == selected_cat]['task_name'].tolist()
+    # 2. Task Name Filtered by Category
+    task_opts = []
+    if u_cat:
+        task_opts = df_tasks[df_tasks['category'] == u_cat]['task_name'].tolist()
     
-    task_name = st.selectbox("Task name / Code name", options=[""] + task_options)
+    task_name = st.selectbox("2. Select Task (Recommendations)", options=[""] + task_opts)
 
+    # 3. Validation Logic
+    current_p = 0.0
+    total_max = 100.0
+    u_unit = "%"
+    
     if task_name:
-        task_info = df_tasks[df_tasks['task_name'] == task_name].iloc[0]
-        total_qty = float(task_info['total_qty'])
-        unit = task_info['unit']
+        # Get limits from Task Master
+        t_info = df_tasks[df_tasks['task_name'] == task_name].iloc[0]
+        total_max = float(t_info['total_qty'])
+        u_unit = t_info['unit']
         
-        # Get Current Progress
-        current_p = 0
+        # Get current progress from Database
         if not df_raw.empty:
-            last_entry = df_raw[df_raw['task_name'] == task_name].sort_values('created_at', ascending=False)
-            if not last_entry.empty:
-                current_p = float(last_entry.iloc[0]['status'])
+            last_task = df_raw[df_raw['task_name'] == task_name].sort_values('created_at', ascending=False)
+            if not last_task.empty:
+                current_p = float(last_task.iloc[0]['status'])
         
-        st.info(f"📊 Current Progress: {current_p} / {total_qty} {unit}")
+        st.info(f"🔍 Current: {current_p} {u_unit} | Total Max: {total_max} {u_unit}")
 
-        with st.form("progress_form", clear_on_submit=True):
-            staff_list = ["", "Puwanai Torpradit", "Zhangxi (Sea)", "Puripat Nammontree", "Ravicha Thaisiam", "Kraiwut Chaiyarak", "Sakda Suwan", "Thanadol Chanpattanakij", "Thanakit Thundon", "Anu Yaemsajja", "Chawalit Posrima", "Amnat Pagamas", "Thotsapon Sripornwong", "Tanupat mongkholkan", "Putthipong Niyomkitjakankul", "Ekkapol Tangngamsakul", "Natthaphat Suwanmanee", "Kantapon Phasee", "Chatchai Sripradoo", "Chatchai Chanprasert", "Jirapat Phobtavorn", "Thanadon Tuydoi (Tontan)", "Pimchanok Janjamsai"]
-            u_by = st.selectbox("Select Your Name", options=staff_list)
-            
-            new_stat = st.number_input(f"Enter New Progress ({unit})", min_value=0.0, max_value=total_qty, value=float(current_p), step=0.1)
-            st.markdown(f"<div class='qty-hint'>Max allowed: {total_qty} {unit}</div>", unsafe_allow_html=True)
-            
-            up_file = st.file_uploader("Photo Progress", type=['jpg', 'png', 'jpeg'])
-            
-            if st.form_submit_button("Submit Progress"):
-                if not u_by:
-                    st.error("Please select your name.")
-                elif new_stat < current_p:
-                    st.error(f"Cannot fill less than current progress ({current_p} {unit})")
-                elif new_stat > total_qty:
-                    st.error(f"Cannot exceed total quantity ({total_qty} {unit})")
+    with st.form("progress_form", clear_on_submit=True):
+        staff_list = ["", "Puwanai Torpradit", "Zhangxi (Sea)", "Puripat Nammontree", "Ravicha Thaisiam", "Kraiwut Chaiyarak", "Sakda Suwan", "Thanadol Chanpattanakij", "Thanakit Thundon", "Anu Yaemsajja", "Chawalit Posrima", "Amnat Pagamas", "Thotsapon Sripornwong", "Tanupat mongkholkan", "Putthipong Niyomkitjakankul", "Ekkapol Tangngamsakul", "Natthaphat Suwanmanee", "Kantapon Phasee", "Chatchai Sripradoo", "Chatchai Chanprasert", "Jirapat Phobtavorn", "Thanadon Tuydoi (Tontan)", "Pimchanok Janjamsai"]
+        u_by = st.selectbox("Select Your Name", options=staff_list)
+        
+        stat = st.number_input(f"Progress ({u_unit})", min_value=0.0, max_value=float(total_max), value=float(current_p))
+        st.markdown(f"<div class='qty-hint'>Note: Cannot be less than {current_p} or more than {total_max}</div>", unsafe_allow_html=True)
+        
+        up_file = st.file_uploader("Photo Progress", type=['jpg', 'png', 'jpeg'])
+        
+        if st.form_submit_button("Submit Progress"):
+            if task_name and u_by:
+                if stat < current_p:
+                    st.error(f"❌ Error: New progress cannot be less than current ({current_p})")
+                elif stat > total_max:
+                    st.error(f"❌ Error: Exceeds total quantity ({total_max})")
                 else:
                     img_url = ""
                     if up_file:
@@ -96,40 +116,17 @@ def show_upload_form():
                     
                     supabase.table("construction_progress").insert({
                         "task_name": task_name, "update_by": u_by, 
-                        "status": new_stat, "image_url": img_url,
-                        "unit": unit, "total_qty": total_qty
+                        "status": stat, "image_url": img_url,
+                        "category": u_cat, "unit": u_unit
                     }).execute()
-                    st.cache_data.clear()
-                    st.success("Recorded Successfully!"); st.rerun()
+                    st.cache_data.clear(); st.success("Recorded!"); st.rerun()
+            else: st.error("Please select Category, Task, and Name")
 
-# --- 4. Admin Function: Import Excel ---
-def admin_panel():
-    st.divider()
-    st.subheader("⚙️ Admin Settings")
-    
-    # Import Excel Function
-    st.markdown("### 📥 Import Task Master")
-    import_file = st.file_uploader("Upload 'Import V1.xlsx'", type=['xlsx'])
-    if import_file and st.button("Confirm Import Data"):
-        df_imp = pd.read_excel(import_file)
-        # Column mapping based on your request
-        # A=Description, B=Category, C=Total, D=Unit
-        df_imp = df_imp.iloc[:, 0:4]
-        df_imp.columns = ['task_name', 'category', 'total_qty', 'unit']
-        
-        # Clear old Task Master and Insert New
-        supabase.table("task_master").delete().neq("id", -1).execute() # Delete all
-        for _, row in df_imp.iterrows():
-            supabase.table("task_master").insert(row.to_dict()).execute()
-        
-        st.success("Task Master Updated!"); st.cache_data.clear(); st.rerun()
-
-# --- 5. Main Logic ---
+# --- 4. Main App Logic ---
 page = st.query_params.get("page", "dashboard")
 
 if page == "upload":
-    show_upload_form()
-    st.markdown('<br><a href="/?page=dashboard" target="_self">📊 View Dashboard</a>', unsafe_allow_html=True)
+    show_upload_form(show_dash_btn=True)
 else:
     with st.sidebar:
         if "admin_logged_in" not in st.session_state: st.session_state.admin_logged_in = False
@@ -137,16 +134,82 @@ else:
             st.title("🔐 Admin Login")
             u, p = st.text_input("User"), st.text_input("Pass", type="password")
             if st.button("Login"):
-                if u == "admin" and p == "mep1234": 
-                    st.session_state.admin_logged_in = True; st.rerun()
+                if u == "admin" and p == "mep1234": st.session_state.admin_logged_in = True; st.rerun()
                 else: st.error("Invalid")
         else:
             if st.button("🚪 Logout"): st.session_state.admin_logged_in = False; st.rerun()
-            admin_panel()
+            st.divider()
+            
+            # --- Admin Excel Import ---
+            st.subheader("📥 Import Task Master")
+            imp_file = st.file_uploader("Upload 'Import V1.xlsx'", type=['xlsx'])
+            if imp_file and st.button("Confirm Import"):
+                df_imp = pd.read_excel(imp_file)
+                df_imp = df_imp.iloc[:, 0:4] # Take Columns A, B, C, D
+                df_imp.columns = ['task_name', 'category', 'total_qty', 'unit']
+                
+                # Delete old data and Insert New
+                supabase.table("task_master").delete().neq("id", -1).execute()
+                for _, row in df_imp.iterrows():
+                    supabase.table("task_master").insert(row.to_dict()).execute()
+                st.success("Task Master Updated!"); st.cache_data.clear(); st.rerun()
+            
+            st.divider()
+            show_upload_form(False)
 
+    # --- Dashboard View (Kept your V44 logic) ---
     st.title("🚧 MEP Construction Dashboard")
-    # ... Dashboard Visualization Logic (Remains similar to your V44) ...
+    if not st.session_state.admin_logged_in:
+        st.markdown('<a href="/?page=upload" target="_self" style="color:#ff4b4b; text-decoration:none;">⬅️ Back to Upload Photo</a>', unsafe_allow_html=True)
+
+    c1, c2 = st.columns(2)
+    start_d = c1.date_input("From date", min_date) 
+    end_d = c2.date_input("To date", datetime.now())
+
     if not df_raw.empty:
-        # Progress Calculation logic using df_tasks to get units and totals
-        df_latest = df_raw.sort_values('created_at', ascending=False).drop_duplicates('task_name')
-        # (Visualize with Plotly here using 'total_qty' as the 100% mark)
+        mask = (df_raw['created_at'].dt.date >= start_d) & (df_raw['created_at'].dt.date <= end_d)
+        df_f = df_raw[mask].copy()
+
+        if not df_f.empty:
+            # Join with df_tasks to get total_qty for percentage calculation
+            df_latest = df_f.sort_values('created_at', ascending=False).drop_duplicates('task_name')
+            
+            # Merge with task_master to get the Total Qty for the bar chart
+            df_latest = df_latest.merge(df_tasks[['task_name', 'total_qty']], on='task_name', how='left')
+            df_latest['pct'] = (df_latest['status'] / df_latest['total_qty']) * 100
+            
+            df_latest['display_label'] = df_latest.apply(lambda x: f"{x['update_by'] : <12} | {x['task_name']}", axis=1)
+            
+            st.subheader("📊 Progress Overview")
+            
+            # Bar Chart showing Percentage
+            fig = px.bar(df_latest, x='pct', y='display_label', orientation='h', 
+                         range_x=[0, 110], color_discrete_sequence=['#FFD1D1'])
+            
+            fig.update_traces(
+                text=df_latest.apply(lambda x: f"{x['status']} / {x['total_qty']}", axis=1), 
+                textposition='outside', 
+                textfont_size=18, 
+                cliponaxis=False 
+            )
+
+            fig.update_layout(
+                xaxis_title="Completion (%)",
+                height=max(400, len(df_latest)*50), 
+                yaxis_title="", 
+                margin=dict(l=280, r=60, t=20, b=20), 
+                yaxis=dict(autorange="reversed", tickfont=dict(family="Calibri", size=16))
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+            # --- Gallery (Same as V44) ---
+            st.divider(); st.subheader("📸 Photo Progress")
+            for t in df_latest['task_name'].unique():
+                imgs = df_f[(df_f['task_name'] == t) & (df_f['image_url'].str.startswith('http', na=False))].sort_values('created_at', ascending=False)
+                if not imgs.empty:
+                    st.markdown(f"📍 **Task: {t}**")
+                    cols = st.columns(5)
+                    for i, (_, r) in enumerate(imgs.iterrows()):
+                        with cols[i%5]: 
+                            st.image(r['image_url'], use_container_width=True)
+                            st.caption(r['created_at'].strftime('%d/%m %H:%M'))
