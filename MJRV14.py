@@ -166,41 +166,46 @@ else:
     start_d = c1.date_input("From date", min_date) 
     end_d = c2.date_input("To date", datetime.now())
 
-    if not df_raw.empty:
-        mask = (df_raw['created_at'].dt.date >= start_d) & (df_raw['created_at'].dt.date <= end_d)
-        df_f = df_raw[mask].copy()
+    if not df_f.empty:
+                # 1. Get latest status for each task
+                df_latest = df_f.sort_values('created_at', ascending=False).drop_duplicates('task_name')
+                
+                # 2. Merge with task_master to get the Total Qty and Unit
+                df_latest = df_latest.merge(df_tasks[['task_name', 'total_qty', 'unit']], on='task_name', how='left')
+                
+                # --- FIX: Ensure values are numeric to avoid TypeError ---
+                df_latest['status'] = pd.to_numeric(df_latest['status'], errors='coerce').fillna(0)
+                df_latest['total_qty'] = pd.to_numeric(df_latest['total_qty'], errors='coerce').fillna(1) # Fill 1 to avoid divide by zero
+                
+                # --- FIX: Calculate Percentage for Dashboard ---
+                # This converts everything (m., set, etc.) into 0-100%
+                df_latest['pct'] = (df_latest['status'] / df_latest['total_qty']) * 100
+                
+                df_latest['display_label'] = df_latest.apply(lambda x: f"{x['update_by'] : <12} | {x['task_name']}", axis=1)
+                
+                st.subheader("📊 Progress Overview (%)")
+                
+                # 3. Bar Chart showing Percentage (Scaled 0 to 100)
+                fig = px.bar(df_latest, x='pct', y='display_label', orientation='h', 
+                            range_x=[0, 115], # Extra space for text labels
+                            color_discrete_sequence=['#FFD1D1'])
+                
+                # Use 'text=' to show the real numbers next to the percentage bar
+                fig.update_traces(
+                    text=df_latest.apply(lambda x: f"{x['pct']:.1f}% ({x['status']}/{x['total_qty']} {x['unit']})", axis=1), 
+                    textposition='outside', 
+                    textfont_size=16, 
+                    cliponaxis=False 
+                )
 
-        if not df_f.empty:
-            # Join with df_tasks to get total_qty for percentage calculation
-            df_latest = df_f.sort_values('created_at', ascending=False).drop_duplicates('task_name')
-            
-            # Merge with task_master to get the Total Qty for the bar chart
-            df_latest = df_latest.merge(df_tasks[['task_name', 'total_qty']], on='task_name', how='left')
-            df_latest['pct'] = (df_latest['status'] / df_latest['total_qty']) * 100
-            
-            df_latest['display_label'] = df_latest.apply(lambda x: f"{x['update_by'] : <12} | {x['task_name']}", axis=1)
-            
-            st.subheader("📊 Progress Overview")
-            
-            # Bar Chart showing Percentage
-            fig = px.bar(df_latest, x='pct', y='display_label', orientation='h', 
-                         range_x=[0, 110], color_discrete_sequence=['#FFD1D1'])
-            
-            fig.update_traces(
-                text=df_latest.apply(lambda x: f"{x['status']} / {x['total_qty']}", axis=1), 
-                textposition='outside', 
-                textfont_size=18, 
-                cliponaxis=False 
-            )
-
-            fig.update_layout(
-                xaxis_title="Completion (%)",
-                height=max(400, len(df_latest)*50), 
-                yaxis_title="", 
-                margin=dict(l=280, r=60, t=20, b=20), 
-                yaxis=dict(autorange="reversed", tickfont=dict(family="Calibri", size=16))
-            )
-            st.plotly_chart(fig, use_container_width=True)
+                fig.update_layout(
+                    xaxis_title="Completion Percentage",
+                    height=max(400, len(df_latest)*50), 
+                    yaxis_title="", 
+                    margin=dict(l=280, r=60, t=20, b=20), 
+                    yaxis=dict(autorange="reversed", tickfont=dict(family="Calibri", size=14))
+                )
+                st.plotly_chart(fig, use_container_width=True)
 
             # --- Gallery (Same as V44) ---
             st.divider(); st.subheader("📸 Photo Progress")
