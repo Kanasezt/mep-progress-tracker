@@ -23,7 +23,7 @@ st.markdown("""
     <style>
     /* Target the Refresh Button specifically */
     .refresh-container div[data-testid="stButton"] > button {
-        background-color: #002366 !important; /* Dark Blue */
+        background-color: #002266 !important; /* Dark Blue */
         color: white !important;
         border: 1px solid #004366 !important;
         padding: 5px 10px !important;
