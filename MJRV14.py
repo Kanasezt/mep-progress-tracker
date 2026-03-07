@@ -21,6 +21,17 @@ st.set_page_config(page_title="MEP Tracker V45", layout="wide")
 # --- CSS Styling ---
 st.markdown("""
     <style>
+    /* Target the Refresh Button specifically */
+    .refresh-container div[data-testid="stButton"] > button {
+        background-color: #002366 !important; /* Dark Blue */
+        color: white !important;
+        border: 1px solid #002366 !important;
+        padding: 5px 10px !important;
+        height: 35px !important; /* Smaller height */
+        width: auto !important;   /* Smaller width */
+        font-size: 13px !important;
+    }
+            
     .block-container { padding-top: 1.5rem !important; padding-bottom: 1rem !important; }
     .dashboard-link {
         float: right; text-decoration: none !important; background-color: #FF4B4B !important;
@@ -161,14 +172,18 @@ else:
             st.divider(); show_upload_form(False)
 
     # --- Dashboard View ---
-    col_title, col_refresh = st.columns([3, 1])
+    # Changed ratio to [5, 1] to make the button column smaller
+    col_title, col_refresh = st.columns([5, 1]) 
     with col_title:
         st.title("🚧 MEP Construction Dashboard")
     with col_refresh:
         st.markdown('<br>', unsafe_allow_html=True)
-        if st.button("🔄 Refresh Data", use_container_width=True):
+        # Wrap in a div to apply the specific CSS from Step A
+        st.markdown('<div class="refresh-container">', unsafe_allow_html=True)
+        if st.button("🔄 Refresh"):
             st.cache_data.clear()
             st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
     if not st.session_state.admin_logged_in:
         st.markdown('<a href="/?page=upload" target="_self" style="color:#ff4b4b; text-decoration:none;">⬅️ Back to Upload Photo</a>', unsafe_allow_html=True)
