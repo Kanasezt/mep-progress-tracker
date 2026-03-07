@@ -26,6 +26,12 @@ st.markdown("""
         float: right; text-decoration: none !important; background-color: #FF4B4B !important;
         color: white !important; padding: 10px 20px; border-radius: 8px;
         font-weight: bold; font-size: 14px; display: inline-block; border: none;
+        margin-left: 10px;
+    }
+    .refresh-btn > button {
+        float: right; background-color: #ffffff !important; color: #FF4B4B !important;
+        border: 2px solid #FF4B4B !important; border-radius: 8px;
+        font-weight: bold; height: 42px;
     }
     div[data-testid="stFormSubmitButton"] > button {
         background-color: #0047AB !important; 
@@ -57,10 +63,19 @@ if not df_raw.empty:
 
 # --- 3. Function: Upload Form ---
 def show_upload_form(show_dash_btn=False):
-    col_t, col_b = st.columns([3, 1])
+    col_t, col_b = st.columns([2, 2])
     with col_t: st.header("🏗️ Update Progress")
+    
     if show_dash_btn:
-        with col_b: st.markdown('<br><a href="/?page=dashboard" target="_self" class="dashboard-link">📊 View Dashboard</a>', unsafe_allow_html=True)
+        with col_b:
+            # Container for the red-area buttons
+            st.markdown('<a href="/?page=dashboard" target="_self" class="dashboard-link">📊 View Dashboard</a>', unsafe_allow_html=True)
+            # Add Refresh Button inside the red crop area
+            st.markdown('<div class="refresh-btn">', unsafe_allow_html=True)
+            if st.button("🔄 Refresh Data"):
+                st.cache_data.clear()
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
     if df_tasks.empty:
         st.warning("⚠️ No Task Master data found. Admin must import 'Import V1.xlsx' in the sidebar first.")
@@ -159,7 +174,6 @@ else:
     today_th = (datetime.now(timezone(timedelta(hours=7)))).date()
     end_d = c2.date_input("To date", today_th)
 
-    # --- THE FIXED PART: Restored filtering logic and indentation ---
     if not df_raw.empty:
         mask = (df_raw['created_at'].dt.date >= start_d) & (df_raw['created_at'].dt.date <= end_d)
         df_f = df_raw[mask].copy()
