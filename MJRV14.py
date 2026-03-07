@@ -25,7 +25,7 @@ st.markdown("""
     .refresh-container div[data-testid="stButton"] > button {
         background-color: #002366 !important; /* Dark Blue */
         color: white !important;
-        border: 1px solid #002366 !important;
+        border: 1px solid #004366 !important;
         padding: 5px 10px !important;
         height: 35px !important; /* Smaller height */
         width: auto !important;   /* Smaller width */
