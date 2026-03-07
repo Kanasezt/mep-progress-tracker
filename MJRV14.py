@@ -26,12 +26,16 @@ st.markdown("""
         float: right; text-decoration: none !important; background-color: #FF4B4B !important;
         color: white !important; padding: 10px 20px; border-radius: 8px;
         font-weight: bold; font-size: 14px; display: inline-block; border: none;
-        margin-left: 10px;
     }
-    .refresh-btn > button {
-        float: right; background-color: #ffffff !important; color: #FF4B4B !important;
-        border: 2px solid #FF4B4B !important; border-radius: 8px;
-        font-weight: bold; height: 42px;
+    /* Style for the Refresh Button on Dashboard */
+    .stButton > button {
+        border-radius: 8px;
+        font-weight: bold;
+    }
+    .refresh-container {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: -45px;
     }
     div[data-testid="stFormSubmitButton"] > button {
         background-color: #0047AB !important; 
@@ -63,19 +67,10 @@ if not df_raw.empty:
 
 # --- 3. Function: Upload Form ---
 def show_upload_form(show_dash_btn=False):
-    col_t, col_b = st.columns([2, 2])
+    col_t, col_b = st.columns([3, 1])
     with col_t: st.header("🏗️ Update Progress")
-    
     if show_dash_btn:
-        with col_b:
-            # Container for the red-area buttons
-            st.markdown('<a href="/?page=dashboard" target="_self" class="dashboard-link">📊 View Dashboard</a>', unsafe_allow_html=True)
-            # Add Refresh Button inside the red crop area
-            st.markdown('<div class="refresh-btn">', unsafe_allow_html=True)
-            if st.button("🔄 Refresh Data"):
-                st.cache_data.clear()
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
+        with col_b: st.markdown('<br><a href="/?page=dashboard" target="_self" class="dashboard-link">📊 View Dashboard</a>', unsafe_allow_html=True)
 
     if df_tasks.empty:
         st.warning("⚠️ No Task Master data found. Admin must import 'Import V1.xlsx' in the sidebar first.")
@@ -165,7 +160,16 @@ else:
                 st.success("Task Master Updated!"); st.cache_data.clear(); st.rerun()
             st.divider(); show_upload_form(False)
 
-    st.title("🚧 MEP Construction Dashboard")
+    # --- Dashboard View ---
+    col_title, col_refresh = st.columns([3, 1])
+    with col_title:
+        st.title("🚧 MEP Construction Dashboard")
+    with col_refresh:
+        st.markdown('<br>', unsafe_allow_html=True)
+        if st.button("🔄 Refresh Data", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+
     if not st.session_state.admin_logged_in:
         st.markdown('<a href="/?page=upload" target="_self" style="color:#ff4b4b; text-decoration:none;">⬅️ Back to Upload Photo</a>', unsafe_allow_html=True)
 
