@@ -143,7 +143,7 @@ def show_upload_form(show_dash_btn=False):
             else: st.error("Please fill Name and select a Task")
 
 # --- 4. Main App Logic ---
-page = st.query_params.get("page", "dashboard")
+page = st.query_params.get("page", "upload")
 
 if page == "upload":
     show_upload_form(show_dash_btn=True)
