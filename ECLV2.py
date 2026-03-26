@@ -16,7 +16,7 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="Issue Escalation V4.1", layout="wide")
+st.set_page_config(page_title="Pending and Defect V1.0", layout="wide")
 
 # --- 2. CSS Styling ---
 st.markdown("""
