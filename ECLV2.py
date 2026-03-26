@@ -16,7 +16,7 @@ except:
 
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="Pending and Defect V1.0", layout="wide")
+st.set_page_config(page_title="Issue Escalation V4.1", layout="wide")
 
 # --- 2. CSS Styling ---
 st.markdown("""
@@ -74,6 +74,16 @@ st.markdown("""
         margin-left: 10px;
         border: 1px solid #ddd;
     }
+    .category-tag {
+        background-color: #e8f0fe;
+        color: #1a73e8;
+        padding: 2px 8px;
+        border-radius: 5px;
+        font-size: 14px;
+        font-weight: bold;
+        margin-left: 10px;
+        border: 1px solid #c6dafc;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -94,6 +104,9 @@ def load_data():
 
             if "likes" not in df_raw.columns:
                 df_raw["likes"] = 0
+
+            if "category" not in df_raw.columns:
+                df_raw["category"] = ""
 
         return df_raw
     except:
@@ -128,6 +141,7 @@ def export_excel_with_images(dataframe):
         cols = [
             "id_str",
             "staff_name",
+            "category",
             "issue_detail",
             "related_to",
             "status",
@@ -142,6 +156,7 @@ def export_excel_with_images(dataframe):
         df_final.columns = [
             "ID",
             "Staff Name",
+            "Category",
             "Detail",
             "Severity",
             "Status",
@@ -155,8 +170,8 @@ def export_excel_with_images(dataframe):
         df_final.to_excel(writer, sheet_name="Issue_Report", index=False)
 
         worksheet = writer.sheets["Issue_Report"]
-        worksheet.set_column("K:K", 20)
-        worksheet.write(0, 10, "Image")
+        worksheet.set_column("L:L", 20)
+        worksheet.write(0, 11, "Image")
         worksheet.set_default_row(80)
 
         for i, url in enumerate(df_ex["image_url"]):
@@ -166,7 +181,7 @@ def export_excel_with_images(dataframe):
                     img_data = io.BytesIO(resp.content)
                     worksheet.insert_image(
                         i + 1,
-                        10,
+                        11,
                         url,
                         {
                             "image_data": img_data,
@@ -185,7 +200,7 @@ def export_excel_with_images(dataframe):
 col_t, col_r = st.columns([5, 1])
 
 with col_t:
-    st.title("🚨 Issue Escalation V4.0")
+    st.title("🚨 Issue Escalation V4.1")
 
 with col_r:
     st.write("##")
@@ -222,6 +237,10 @@ with st.form("issue_form", clear_on_submit=True):
 
     u_name = col_n.text_input("** Fill Your Name")
     u_related = col_s.radio("Severity:", options=["Critical", "Major", "Minor"], horizontal=True)
+
+    col_cat, = st.columns(1)
+    u_category = col_cat.selectbox("** Category", ["Pending", "Defect"])
+
     u_detail = st.text_area("** Issue Detail", height=100)
     up_file = st.file_uploader("** Upload Photo", type=["jpg", "png", "jpeg"])
 
@@ -236,8 +255,9 @@ with st.form("issue_form", clear_on_submit=True):
 
             supabase.table("issue_escalation").insert({
                 "staff_name": u_name,
+                "category": u_category,
                 "issue_detail": u_detail,
-                "related_to": u_related,   # keep same DB column name
+                "related_to": u_related,
                 "image_url": img_url,
                 "status": "Open",
                 "likes": 0
@@ -279,7 +299,8 @@ if not df.empty:
         df_show = df_show[
             df_show["staff_name"].astype(str).str.lower().str.contains(search_text, na=False) |
             df_show["issue_detail"].astype(str).str.lower().str.contains(search_text, na=False) |
-            df_show["related_to"].astype(str).str.lower().str.contains(search_text, na=False)
+            df_show["related_to"].astype(str).str.lower().str.contains(search_text, na=False) |
+            df_show["category"].astype(str).str.lower().str.contains(search_text, na=False)
         ]
 
     if status_filter != "All":
@@ -297,10 +318,20 @@ if not df.empty:
                 st.markdown(f'<img src="{r["image_url"]}" class="img-card">', unsafe_allow_html=True)
 
         with c_info:
-            st.markdown(
-                f"### {r['id']:03d} - {r['staff_name']} <span class='related-tag'>Severity: {r['related_to']}</span>",
-                unsafe_allow_html=True
-            )
+            category_text = r.get("category", "")
+            if category_text:
+                st.markdown(
+                    f"### {r['id']:03d} - {r['staff_name']} "
+                    f"<span class='category-tag'>Category: {category_text}</span>"
+                    f"<span class='related-tag'>Severity: {r['related_to']}</span>",
+                    unsafe_allow_html=True
+                )
+            else:
+                st.markdown(
+                    f"### {r['id']:03d} - {r['staff_name']} "
+                    f"<span class='related-tag'>Severity: {r['related_to']}</span>",
+                    unsafe_allow_html=True
+                )
 
             days = (now_th - r["created_at"]).days
 
