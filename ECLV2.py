@@ -283,7 +283,7 @@ def export_excel_with_images(dataframe):
 col_t, col_r = st.columns([5, 1])
 
 with col_t:
-    st.title("🚨 Issue Escalation V2")
+    st.title("🚨 Pending and Defect V1.0")
 
 with col_r:
     st.write("##")
