@@ -112,6 +112,12 @@ div[data-testid="stFormSubmitButton"] > button {
     text-align: center;
     margin-top: 6px;
 }
+.admin-box {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 10px;
+    background: #fafafa;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -338,20 +344,24 @@ def apply_filters(df, search_text, status_filter, category_filter):
     return df_show
 
 
+def clear_runtime_cache():
+    st.cache_data.clear()
+    if "excel_with_images_ready" in st.session_state:
+        del st.session_state["excel_with_images_ready"]
+
+
 # =========================
 # 4. HEADER
 # =========================
 col_t, col_r = st.columns([5, 1])
 
 with col_t:
-    st.title("🚨 Pending and Defect V1.1")
+    st.title("🚨 Pending and Defect V1.2")
 
 with col_r:
     st.write("##")
     if st.button("🔄 Refresh Data"):
-        st.cache_data.clear()
-        if "excel_with_images_ready" in st.session_state:
-            del st.session_state["excel_with_images_ready"]
+        clear_runtime_cache()
         st.rerun()
 
 df = load_data()
@@ -428,9 +438,7 @@ with st.form("issue_form", clear_on_submit=True):
                     "likes": 0
                 }).execute()
 
-                st.cache_data.clear()
-                if "excel_with_images_ready" in st.session_state:
-                    del st.session_state["excel_with_images_ready"]
+                clear_runtime_cache()
                 st.success(f"✅ Success! New record: {display_no}")
                 st.rerun()
 
@@ -534,7 +542,7 @@ if not df.empty:
     now_th = datetime.now(timezone(timedelta(hours=7)))
 
     for _, r in df_page.iterrows():
-        c_img, c_info, c_admin = st.columns([1.2, 4, 1.8])
+        c_img, c_info, c_admin = st.columns([1.2, 4, 2.2])
 
         with c_img:
             if r.get("image_url") and str(r["image_url"]).startswith("http"):
@@ -586,6 +594,8 @@ if not df.empty:
 
         with c_admin:
             if is_admin:
+                st.markdown('<div class="admin-box">', unsafe_allow_html=True)
+
                 new_stat = st.selectbox(
                     "Update Status",
                     ["Open", "Closed", "Cancel"],
@@ -593,31 +603,50 @@ if not df.empty:
                     key=f"st_{r['id']}"
                 )
 
-                b1, b2 = st.columns(2)
+                edited_detail = st.text_area(
+                    "Edit Issue Detail",
+                    value=str(r["issue_detail"]) if pd.notna(r["issue_detail"]) else "",
+                    height=120,
+                    key=f"detail_{r['id']}"
+                )
 
-                if b1.button("Confirm ✅", key=f"ok_{r['id']}"):
-                    try:
-                        supabase.table(TABLE_NAME).update({
-                            "status": new_stat,
-                            "updated_at": datetime.now(timezone.utc).isoformat()
-                        }).eq("id", r["id"]).execute()
+                a1, a2 = st.columns(2)
+                with a1:
+                    if st.button("Save Detail 💾", key=f"save_detail_{r['id']}"):
+                        try:
+                            supabase.table(TABLE_NAME).update({
+                                "issue_detail": edited_detail,
+                                "updated_at": datetime.now(timezone.utc).isoformat()
+                            }).eq("id", r["id"]).execute()
 
-                        st.cache_data.clear()
-                        if "excel_with_images_ready" in st.session_state:
-                            del st.session_state["excel_with_images_ready"]
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Update failed: {e}")
+                            clear_runtime_cache()
+                            st.success("Detail updated")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Save detail failed: {e}")
 
-                if b2.button("Delete 🗑️", key=f"del_{r['id']}"):
+                with a2:
+                    if st.button("Confirm Status ✅", key=f"ok_{r['id']}"):
+                        try:
+                            supabase.table(TABLE_NAME).update({
+                                "status": new_stat,
+                                "updated_at": datetime.now(timezone.utc).isoformat()
+                            }).eq("id", r["id"]).execute()
+
+                            clear_runtime_cache()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Update failed: {e}")
+
+                if st.button("Delete 🗑️", key=f"del_{r['id']}"):
                     try:
                         supabase.table(TABLE_NAME).delete().eq("id", r["id"]).execute()
-                        st.cache_data.clear()
-                        if "excel_with_images_ready" in st.session_state:
-                            del st.session_state["excel_with_images_ready"]
+                        clear_runtime_cache()
                         st.rerun()
                     except Exception as e:
                         st.error(f"Delete failed: {e}")
+
+                st.markdown('</div>', unsafe_allow_html=True)
 
         st.divider()
 
