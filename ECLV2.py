@@ -45,6 +45,14 @@ div[data-testid="stFormSubmitButton"] > button {
     object-fit: cover;
     border-radius: 10px;
     border: 1px solid #eee;
+    cursor: zoom-in;
+    transition: transform 0.15s ease;
+}
+.img-card:hover {
+    transform: scale(1.03);
+}
+.img-link {
+    text-decoration: none !important;
 }
 .card-open {
     background-color: #E65100;
@@ -98,6 +106,12 @@ div[data-testid="stFormSubmitButton"] > button {
 }
 .like-wrap div[data-testid="stButton"] > button {
     width: 100%;
+}
+.preview-note {
+    font-size: 11px;
+    color: #888;
+    text-align: center;
+    margin-top: 6px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -164,10 +178,6 @@ def load_data():
 
 
 def update_likes(record_id, current_likes):
-    """
-    Simple like update.
-    Main speed gain comes from removing heavy export generation from every rerun.
-    """
     new_likes = int(current_likes or 0) + 1
     supabase.table(TABLE_NAME).update({"likes": new_likes}).eq("id", record_id).execute()
     st.cache_data.clear()
@@ -200,9 +210,6 @@ def generate_category_number(category):
 
 @st.cache_data(ttl=300, show_spinner=False)
 def export_excel_plain(dataframe: pd.DataFrame) -> bytes:
-    """
-    Fast export without images.
-    """
     output = io.BytesIO()
 
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
@@ -241,9 +248,6 @@ def export_excel_plain(dataframe: pd.DataFrame) -> bytes:
 
 
 def export_excel_with_images(dataframe: pd.DataFrame) -> bytes:
-    """
-    Heavy export with images - should run only when user explicitly requests it.
-    """
     output = io.BytesIO()
 
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
@@ -460,7 +464,7 @@ if not df.empty:
 
     st.markdown(f"### Total Records: {len(df_show)}")
 
-    # Fast export section
+    # Export section
     st.subheader("📥 Export")
     ex1, ex2, ex3 = st.columns([1.2, 1.2, 1.5])
 
@@ -523,8 +527,16 @@ if not df.empty:
         c_img, c_info, c_admin = st.columns([1.2, 4, 1.8])
 
         with c_img:
-            if r.get("image_url"):
-                st.markdown(f'<img src="{r["image_url"]}" class="img-card">', unsafe_allow_html=True)
+            if r.get("image_url") and str(r["image_url"]).startswith("http"):
+                st.markdown(
+                    f"""
+                    <a href="{r['image_url']}" target="_blank" class="img-link">
+                        <img src="{r['image_url']}" class="img-card">
+                    </a>
+                    <div class="preview-note">Click image to preview / zoom</div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
         with c_info:
             record_no = r["display_no"] if r.get("display_no") else f"{r['id']:03d}"
