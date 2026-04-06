@@ -45,14 +45,6 @@ div[data-testid="stFormSubmitButton"] > button {
     font-weight: bold;
     border-radius: 10px;
 }
-.img-card {
-    width: 100%;
-    max-width: 150px;
-    aspect-ratio: 1/1;
-    object-fit: cover;
-    border-radius: 10px;
-    border: 1px solid #eee;
-}
 .card-open {
     background-color: #E65100;
     color: white;
@@ -475,9 +467,6 @@ if not df.empty:
 
     st.markdown(f"### Total Records: {len(df_show)}")
 
-    # =========================
-    # SAME WINDOW IMAGE PREVIEW
-    # =========================
     if st.session_state.preview_image_url:
         st.markdown('<div class="preview-box">', unsafe_allow_html=True)
         p1, p2 = st.columns([6, 1])
@@ -490,10 +479,9 @@ if not df.empty:
                 st.rerun()
 
         st.image(st.session_state.preview_image_url, use_container_width=True)
-        st.caption("Use browser zoom (Ctrl + / Ctrl -) if you want to inspect more closely.")
+        st.caption("Use the expand icon on the image or browser zoom if you want to inspect more closely.")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # Export section
     st.subheader("📥 Export")
     ex1, ex2, ex3 = st.columns([1.2, 1.2, 1.5])
 
@@ -528,7 +516,6 @@ if not df.empty:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-    # Pagination
     if page_size_option == "All":
         df_page = df_show.copy()
     else:
@@ -568,15 +555,8 @@ if not df.empty:
         with c_img:
             if r.get("image_url") and str(r["image_url"]).startswith("http"):
                 st.image(r["image_url"], width=150)
-
-                if st.button("Preview 🔍", key=f"preview_{r['id']}"):
-                    st.session_state.preview_image_url = r["image_url"]
-                    record_no = r["display_no"] if r.get("display_no") else f"{r['id']:03d}"
-                    st.session_state.preview_record_no = record_no
-                    st.rerun()
-
                 st.markdown(
-                    '<div class="preview-note">Click Preview to open in same page</div>',
+                    '<div class="preview-note">Use image expand icon to preview / zoom</div>',
                     unsafe_allow_html=True
                 )
 
