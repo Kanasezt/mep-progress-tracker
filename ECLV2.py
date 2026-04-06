@@ -11,7 +11,6 @@ import requests
 # =========================
 TABLE_NAME = "issue_escalation_v2"
 BUCKET_NAME = "images"
-PAGE_SIZE = 20
 
 try:
     URL = st.secrets["SUPABASE_URL"]
@@ -458,11 +457,10 @@ if not df.empty:
         category_filter = st.selectbox("Filter Category", ["All", "Pending", "Defect"])
 
     with c_page:
-    page_size_option = st.selectbox("Rows / page", ["All", 10, 20, 30, 50], index=4)
-
-    page_size = len(df_show) if page_size_option == "All" else int(page_size_option)
+        page_size_option = st.selectbox("Rows / page", ["All", 10, 20, 30, 50], index=4)
 
     df_show = apply_filters(df, search_text, status_filter, category_filter)
+    page_size = len(df_show) if page_size_option == "All" else int(page_size_option)
 
     st.markdown(f"### Total Records: {len(df_show)}")
 
@@ -503,32 +501,35 @@ if not df.empty:
 
     # Pagination
     if page_size_option == "All":
-    df_page = df_show.copy()
-else:
-    total_pages = max(1, (len(df_show) + page_size - 1) // page_size)
+        df_page = df_show.copy()
+    else:
+        total_pages = max(1, (len(df_show) + page_size - 1) // page_size)
 
-    if "page_no" not in st.session_state:
-        st.session_state.page_no = 1
-    st.session_state.page_no = min(st.session_state.page_no, total_pages)
+        if "page_no" not in st.session_state:
+            st.session_state.page_no = 1
+        st.session_state.page_no = min(st.session_state.page_no, total_pages)
 
-    p1, p2, p3 = st.columns([1, 2, 1])
-    with p1:
-        if st.button("⬅ Prev", disabled=st.session_state.page_no <= 1):
-            st.session_state.page_no -= 1
-            st.rerun()
-    with p2:
-        st.markdown(
-            f"<div style='text-align:center;padding-top:8px;'>Page {st.session_state.page_no} / {total_pages}</div>",
-            unsafe_allow_html=True
-        )
-    with p3:
-        if st.button("Next ➡", disabled=st.session_state.page_no >= total_pages):
-            st.session_state.page_no += 1
-            st.rerun()
+        p1, p2, p3 = st.columns([1, 2, 1])
 
-    start_idx = (st.session_state.page_no - 1) * page_size
-    end_idx = start_idx + page_size
-    df_page = df_show.iloc[start_idx:end_idx].copy()
+        with p1:
+            if st.button("⬅ Prev", disabled=st.session_state.page_no <= 1):
+                st.session_state.page_no -= 1
+                st.rerun()
+
+        with p2:
+            st.markdown(
+                f"<div style='text-align:center;padding-top:8px;'>Page {st.session_state.page_no} / {total_pages}</div>",
+                unsafe_allow_html=True
+            )
+
+        with p3:
+            if st.button("Next ➡", disabled=st.session_state.page_no >= total_pages):
+                st.session_state.page_no += 1
+                st.rerun()
+
+        start_idx = (st.session_state.page_no - 1) * page_size
+        end_idx = start_idx + page_size
+        df_page = df_show.iloc[start_idx:end_idx].copy()
 
     now_th = datetime.now(timezone(timedelta(hours=7)))
 
@@ -561,7 +562,6 @@ else:
             st.markdown(f"Status: **{r['status']}**")
 
             days = (now_th - r["created_at"]).days
-
             c_time, c_like = st.columns([2.5, 1])
 
             with c_time:
