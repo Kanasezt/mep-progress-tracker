@@ -11,11 +11,12 @@ import requests
 # =========================
 TABLE_NAME = "issue_escalation_v2"
 BUCKET_NAME = "images"
+PAGE_SIZE = 20
 
 try:
     URL = st.secrets["SUPABASE_URL"]
     KEY = st.secrets["SUPABASE_KEY"]
-except:
+except Exception:
     URL = "https://sizcmbmkbnlolguiulsv.supabase.co"
     KEY = "sb_publishable_ef9RitB16Z7aD683MVo_5Q_oWsnAsel"
 
@@ -91,19 +92,12 @@ div[data-testid="stFormSubmitButton"] > button {
     margin-left: 10px;
     border: 1px solid #c6dafc;
 }
-.displayno-tag {
-    background-color: #fff3cd;
-    color: #7a5d00;
-    padding: 2px 8px;
-    border-radius: 5px;
-    font-size: 14px;
-    font-weight: bold;
-    margin-left: 10px;
-    border: 1px solid #ead58a;
-}
 .small-note {
     font-size: 12px;
     color: #999;
+}
+.like-wrap div[data-testid="stButton"] > button {
+    width: 100%;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -111,55 +105,75 @@ div[data-testid="stFormSubmitButton"] > button {
 # =========================
 # 3. HELPERS
 # =========================
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=30)
 def load_data():
+    """
+    Load only columns actually used by the app.
+    Avoid select("*") to reduce payload and speed up reruns.
+    """
     try:
-        res = supabase.table(TABLE_NAME).select("*").order("id", desc=True).execute()
+        cols = (
+            "id,display_no,category_seq,staff_name,category,issue_detail,"
+            "related_to,image_url,status,likes,created_at,updated_at"
+        )
+        res = (
+            supabase.table(TABLE_NAME)
+            .select(cols)
+            .order("id", desc=True)
+            .execute()
+        )
         df_raw = pd.DataFrame(res.data)
 
-        if not df_raw.empty:
-            if "created_at" in df_raw.columns:
-                df_raw["created_at"] = pd.to_datetime(df_raw["created_at"], utc=True).dt.tz_convert("Asia/Bangkok")
-            else:
-                df_raw["created_at"] = pd.Timestamp.now(tz="Asia/Bangkok")
+        if df_raw.empty:
+            return pd.DataFrame()
 
-            if "updated_at" in df_raw.columns:
-                df_raw["updated_at"] = pd.to_datetime(df_raw["updated_at"], utc=True).dt.tz_convert("Asia/Bangkok")
-            else:
-                df_raw["updated_at"] = df_raw["created_at"]
+        if "created_at" in df_raw.columns:
+            df_raw["created_at"] = pd.to_datetime(
+                df_raw["created_at"], utc=True, errors="coerce"
+            ).dt.tz_convert("Asia/Bangkok")
+        else:
+            df_raw["created_at"] = pd.Timestamp.now(tz="Asia/Bangkok")
 
-            if "likes" not in df_raw.columns:
-                df_raw["likes"] = 0
+        if "updated_at" in df_raw.columns:
+            df_raw["updated_at"] = pd.to_datetime(
+                df_raw["updated_at"], utc=True, errors="coerce"
+            ).dt.tz_convert("Asia/Bangkok")
+        else:
+            df_raw["updated_at"] = df_raw["created_at"]
 
-            if "category" not in df_raw.columns:
-                df_raw["category"] = ""
+        if "likes" not in df_raw.columns:
+            df_raw["likes"] = 0
 
-            if "related_to" not in df_raw.columns:
-                df_raw["related_to"] = ""
+        if "category" not in df_raw.columns:
+            df_raw["category"] = ""
 
-            if "display_no" not in df_raw.columns:
-                df_raw["display_no"] = df_raw["id"].apply(lambda x: f"{x:03d}")
+        if "related_to" not in df_raw.columns:
+            df_raw["related_to"] = ""
 
-            if "category_seq" not in df_raw.columns:
-                df_raw["category_seq"] = None
+        if "display_no" not in df_raw.columns:
+            df_raw["display_no"] = df_raw["id"].apply(lambda x: f"{x:03d}")
+
+        if "category_seq" not in df_raw.columns:
+            df_raw["category_seq"] = None
 
         return df_raw
+
     except Exception as e:
         st.error(f"Load data error: {e}")
         return pd.DataFrame()
 
 
 def update_likes(record_id, current_likes):
-    new_likes = int(current_likes) + 1
+    """
+    Simple like update.
+    Main speed gain comes from removing heavy export generation from every rerun.
+    """
+    new_likes = int(current_likes or 0) + 1
     supabase.table(TABLE_NAME).update({"likes": new_likes}).eq("id", record_id).execute()
     st.cache_data.clear()
 
 
 def generate_category_number(category):
-    """
-    Pending -> P-001, P-002, ...
-    Defect  -> D-001, D-002, ...
-    """
     try:
         res = (
             supabase.table(TABLE_NAME)
@@ -170,14 +184,13 @@ def generate_category_number(category):
             .execute()
         )
 
-        if res.data and len(res.data) > 0 and res.data[0].get("category_seq") is not None:
+        if res.data and res.data[0].get("category_seq") is not None:
             next_seq = int(res.data[0]["category_seq"]) + 1
         else:
             next_seq = 1
 
         prefix = "P" if category == "Pending" else "D"
         display_no = f"{prefix}-{next_seq:03d}"
-
         return next_seq, display_no
 
     except Exception:
@@ -185,7 +198,11 @@ def generate_category_number(category):
         return 1, f"{prefix}-001"
 
 
-def export_excel_with_images(dataframe):
+@st.cache_data(ttl=300, show_spinner=False)
+def export_excel_plain(dataframe: pd.DataFrame) -> bytes:
+    """
+    Fast export without images.
+    """
     output = io.BytesIO()
 
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
@@ -209,32 +226,55 @@ def export_excel_with_images(dataframe):
         )
 
         cols = [
-            "display_no",
-            "staff_name",
-            "category",
-            "issue_detail",
-            "related_to",
-            "status",
-            "likes",
-            "Create Date",
-            "Create Time",
-            "Complete Date",
-            "Pending Days"
+            "display_no", "staff_name", "category", "issue_detail", "related_to",
+            "status", "likes", "Create Date", "Create Time", "Complete Date", "Pending Days"
+        ]
+        df_final = df_ex[cols]
+        df_final.columns = [
+            "Running No", "Staff Name", "Category", "Detail", "Severity",
+            "Status", "Likes", "Create Date", "Create Time", "Complete Date", "Pending Days"
+        ]
+
+        df_final.to_excel(writer, sheet_name="Issue_Report", index=False)
+
+    return output.getvalue()
+
+
+def export_excel_with_images(dataframe: pd.DataFrame) -> bytes:
+    """
+    Heavy export with images - should run only when user explicitly requests it.
+    """
+    output = io.BytesIO()
+
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df_ex = dataframe.copy()
+        now_th = datetime.now(timezone(timedelta(hours=7)))
+
+        if "display_no" not in df_ex.columns:
+            df_ex["display_no"] = df_ex["id"].apply(lambda x: f"{x:03d}")
+
+        df_ex["Create Date"] = df_ex["created_at"].dt.strftime("%d-%b-%y")
+        df_ex["Create Time"] = df_ex["created_at"].dt.strftime("%H:%M:%S")
+
+        def calc_status(row):
+            c_date = row["created_at"]
+            if row["status"] == "Closed":
+                return row["updated_at"].strftime("%d-%b-%y"), f"{max(0, (row['updated_at'] - c_date).days)} days"
+            return "Processing", f"{max(0, (now_th - c_date).days)} days"
+
+        df_ex[["Complete Date", "Pending Days"]] = df_ex.apply(
+            lambda x: pd.Series(calc_status(x)), axis=1
+        )
+
+        cols = [
+            "display_no", "staff_name", "category", "issue_detail", "related_to",
+            "status", "likes", "Create Date", "Create Time", "Complete Date", "Pending Days"
         ]
 
         df_final = df_ex[cols]
         df_final.columns = [
-            "Running No",
-            "Staff Name",
-            "Category",
-            "Detail",
-            "Severity",
-            "Status",
-            "Likes",
-            "Create Date",
-            "Create Time",
-            "Complete Date",
-            "Pending Days"
+            "Running No", "Staff Name", "Category", "Detail", "Severity",
+            "Status", "Likes", "Create Date", "Create Time", "Complete Date", "Pending Days"
         ]
 
         df_final.to_excel(writer, sheet_name="Issue_Report", index=False)
@@ -247,22 +287,18 @@ def export_excel_with_images(dataframe):
         worksheet.set_column("E:E", 12)
         worksheet.set_column("F:F", 12)
         worksheet.set_column("G:G", 10)
-        worksheet.set_column("H:J", 15)
-        worksheet.set_column("K:K", 15)
-        worksheet.set_column("L:L", 20)
-
+        worksheet.set_column("H:K", 15)
         worksheet.write(0, 11, "Image")
         worksheet.set_default_row(80)
 
         for i, url in enumerate(df_ex["image_url"]):
             if url and str(url).startswith("http"):
                 try:
-                    resp = requests.get(url, timeout=8)
+                    resp = requests.get(url, timeout=4)
+                    resp.raise_for_status()
                     img_data = io.BytesIO(resp.content)
                     worksheet.insert_image(
-                        i + 1,
-                        11,
-                        url,
+                        i + 1, 11, url,
                         {
                             "image_data": img_data,
                             "x_scale": 0.12,
@@ -271,10 +307,32 @@ def export_excel_with_images(dataframe):
                             "y_offset": 5
                         }
                     )
-                except:
+                except Exception:
                     continue
 
     return output.getvalue()
+
+
+def apply_filters(df, search_text, status_filter, category_filter):
+    df_show = df.copy()
+
+    if search_text:
+        kw = search_text.lower().strip()
+        df_show = df_show[
+            df_show["staff_name"].astype(str).str.lower().str.contains(kw, na=False) |
+            df_show["issue_detail"].astype(str).str.lower().str.contains(kw, na=False) |
+            df_show["related_to"].astype(str).str.lower().str.contains(kw, na=False) |
+            df_show["category"].astype(str).str.lower().str.contains(kw, na=False) |
+            df_show["display_no"].astype(str).str.lower().str.contains(kw, na=False)
+        ]
+
+    if status_filter != "All":
+        df_show = df_show[df_show["status"] == status_filter]
+
+    if category_filter != "All":
+        df_show = df_show[df_show["category"] == category_filter]
+
+    return df_show
 
 
 # =========================
@@ -283,12 +341,14 @@ def export_excel_with_images(dataframe):
 col_t, col_r = st.columns([5, 1])
 
 with col_t:
-    st.title("🚨 Pending and Defect V1.0")
+    st.title("🚨 Pending and Defect V1.1")
 
 with col_r:
     st.write("##")
     if st.button("🔄 Refresh Data"):
         st.cache_data.clear()
+        if "excel_with_images_ready" in st.session_state:
+            del st.session_state["excel_with_images_ready"]
         st.rerun()
 
 df = load_data()
@@ -366,6 +426,8 @@ with st.form("issue_form", clear_on_submit=True):
                 }).execute()
 
                 st.cache_data.clear()
+                if "excel_with_images_ready" in st.session_state:
+                    del st.session_state["excel_with_images_ready"]
                 st.success(f"✅ Success! New record: {display_no}")
                 st.rerun()
 
@@ -380,7 +442,7 @@ st.divider()
 # 8. FILTER / EXPORT
 # =========================
 if not df.empty:
-    c_search, c_status, c_cat, c_export = st.columns([2, 1, 1, 1.2])
+    c_search, c_status, c_cat, c_page = st.columns([2, 1, 1, 1])
 
     with c_search:
         search_text = st.text_input("🔍 Search keyword")
@@ -391,40 +453,73 @@ if not df.empty:
     with c_cat:
         category_filter = st.selectbox("Filter Category", ["All", "Pending", "Defect"])
 
-    with c_export:
-        st.write("")
-        st.write("")
-        excel_data = export_excel_with_images(df)
-        st.download_button(
-            label="📥 Export Excel",
-            data=excel_data,
-            file_name=f"issue_escalation_v2_{datetime.now().strftime('%d%m%Y')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+    with c_page:
+        page_size = st.selectbox("Rows / page", [10, 20, 30, 50], index=1)
 
-    df_show = df.copy()
-
-    if search_text:
-        kw = search_text.lower()
-        df_show = df_show[
-            df_show["staff_name"].astype(str).str.lower().str.contains(kw, na=False) |
-            df_show["issue_detail"].astype(str).str.lower().str.contains(kw, na=False) |
-            df_show["related_to"].astype(str).str.lower().str.contains(kw, na=False) |
-            df_show["category"].astype(str).str.lower().str.contains(kw, na=False) |
-            df_show["display_no"].astype(str).str.lower().str.contains(kw, na=False)
-        ]
-
-    if status_filter != "All":
-        df_show = df_show[df_show["status"] == status_filter]
-
-    if category_filter != "All":
-        df_show = df_show[df_show["category"] == category_filter]
+    df_show = apply_filters(df, search_text, status_filter, category_filter)
 
     st.markdown(f"### Total Records: {len(df_show)}")
 
+    # Fast export section
+    st.subheader("📥 Export")
+    ex1, ex2, ex3 = st.columns([1.2, 1.2, 1.5])
+
+    with ex1:
+        csv_data = df_show.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            label="Export CSV",
+            data=csv_data,
+            file_name=f"issue_escalation_v2_{datetime.now().strftime('%d%m%Y')}.csv",
+            mime="text/csv"
+        )
+
+    with ex2:
+        plain_excel = export_excel_plain(df_show)
+        st.download_button(
+            label="Export Excel (fast)",
+            data=plain_excel,
+            file_name=f"issue_escalation_v2_fast_{datetime.now().strftime('%d%m%Y')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    with ex3:
+        if st.button("Prepare Excel with Images"):
+            with st.spinner("Preparing image Excel..."):
+                st.session_state["excel_with_images_ready"] = export_excel_with_images(df_show)
+
+        if "excel_with_images_ready" in st.session_state:
+            st.download_button(
+                label="Download Excel with Images",
+                data=st.session_state["excel_with_images_ready"],
+                file_name=f"issue_escalation_v2_images_{datetime.now().strftime('%d%m%Y')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+    # Pagination
+    total_pages = max(1, (len(df_show) + page_size - 1) // page_size)
+    if "page_no" not in st.session_state:
+        st.session_state.page_no = 1
+    st.session_state.page_no = min(st.session_state.page_no, total_pages)
+
+    p1, p2, p3 = st.columns([1, 2, 1])
+    with p1:
+        if st.button("⬅ Prev", disabled=st.session_state.page_no <= 1):
+            st.session_state.page_no -= 1
+            st.rerun()
+    with p2:
+        st.markdown(f"<div style='text-align:center;padding-top:8px;'>Page {st.session_state.page_no} / {total_pages}</div>", unsafe_allow_html=True)
+    with p3:
+        if st.button("Next ➡", disabled=st.session_state.page_no >= total_pages):
+            st.session_state.page_no += 1
+            st.rerun()
+
+    start_idx = (st.session_state.page_no - 1) * page_size
+    end_idx = start_idx + page_size
+    df_page = df_show.iloc[start_idx:end_idx].copy()
+
     now_th = datetime.now(timezone(timedelta(hours=7)))
 
-    for _, r in df_show.iterrows():
+    for _, r in df_page.iterrows():
         c_img, c_info, c_admin = st.columns([1.2, 4, 1.8])
 
         with c_img:
@@ -459,14 +554,14 @@ if not df.empty:
                     )
 
             with c_like:
-                like_val = r.get("likes", 0)
-                if st.button(f"❤️ {int(like_val)}", key=f"like_btn_{r['id']}"):
+                st.markdown('<div class="like-wrap">', unsafe_allow_html=True)
+                like_val = int(r.get("likes", 0))
+                if st.button(f"❤️ {like_val}", key=f"like_btn_{r['id']}"):
                     update_likes(r["id"], like_val)
                     st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
 
-            st.caption(
-                f"DB ID: {r['id']} | Category Seq: {r.get('category_seq', '')}"
-            )
+            st.caption(f"DB ID: {r['id']} | Category Seq: {r.get('category_seq', '')}")
 
         with c_admin:
             if is_admin:
@@ -487,6 +582,8 @@ if not df.empty:
                         }).eq("id", r["id"]).execute()
 
                         st.cache_data.clear()
+                        if "excel_with_images_ready" in st.session_state:
+                            del st.session_state["excel_with_images_ready"]
                         st.rerun()
                     except Exception as e:
                         st.error(f"Update failed: {e}")
@@ -495,6 +592,8 @@ if not df.empty:
                     try:
                         supabase.table(TABLE_NAME).delete().eq("id", r["id"]).execute()
                         st.cache_data.clear()
+                        if "excel_with_images_ready" in st.session_state:
+                            del st.session_state["excel_with_images_ready"]
                         st.rerun()
                     except Exception as e:
                         st.error(f"Delete failed: {e}")
