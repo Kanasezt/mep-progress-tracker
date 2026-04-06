@@ -24,7 +24,15 @@ supabase: Client = create_client(URL, KEY)
 st.set_page_config(page_title="Issue Escalation V2", layout="wide")
 
 # =========================
-# 2. CSS
+# 2. SESSION STATE
+# =========================
+if "preview_image_url" not in st.session_state:
+    st.session_state.preview_image_url = ""
+if "preview_record_no" not in st.session_state:
+    st.session_state.preview_record_no = ""
+
+# =========================
+# 3. CSS
 # =========================
 st.markdown("""
 <style>
@@ -44,14 +52,6 @@ div[data-testid="stFormSubmitButton"] > button {
     object-fit: cover;
     border-radius: 10px;
     border: 1px solid #eee;
-    cursor: zoom-in;
-    transition: transform 0.15s ease;
-}
-.img-card:hover {
-    transform: scale(1.03);
-}
-.img-link {
-    text-decoration: none !important;
 }
 .card-open {
     background-color: #E65100;
@@ -118,18 +118,21 @@ div[data-testid="stFormSubmitButton"] > button {
     padding: 10px;
     background: #fafafa;
 }
+.preview-box {
+    border: 1px solid #d9d9d9;
+    border-radius: 12px;
+    padding: 14px;
+    background: #fcfcfc;
+    margin-bottom: 16px;
+}
 </style>
 """, unsafe_allow_html=True)
 
 # =========================
-# 3. HELPERS
+# 4. HELPERS
 # =========================
 @st.cache_data(ttl=30)
 def load_data():
-    """
-    Load only columns actually used by the app.
-    Avoid select("*") to reduce payload and speed up reruns.
-    """
     try:
         cols = (
             "id,display_no,category_seq,staff_name,category,issue_detail,"
@@ -351,12 +354,12 @@ def clear_runtime_cache():
 
 
 # =========================
-# 4. HEADER
+# 5. HEADER
 # =========================
 col_t, col_r = st.columns([5, 1])
 
 with col_t:
-    st.title("🚨 Pending and Defect V1.2")
+    st.title("🚨 Pending and Defect V1.3")
 
 with col_r:
     st.write("##")
@@ -367,7 +370,7 @@ with col_r:
 df = load_data()
 
 # =========================
-# 5. ADMIN
+# 6. ADMIN
 # =========================
 with st.sidebar:
     st.header("🔐 Admin Access")
@@ -381,7 +384,7 @@ with st.sidebar:
     st.caption("This version is separated from old app/table.")
 
 # =========================
-# 6. SUMMARY CARDS
+# 7. SUMMARY CARDS
 # =========================
 if not df.empty:
     c1, c2, c3 = st.columns(3)
@@ -396,7 +399,7 @@ if not df.empty:
 st.divider()
 
 # =========================
-# 7. SUBMIT FORM
+# 8. SUBMIT FORM
 # =========================
 with st.form("issue_form", clear_on_submit=True):
     col_n, col_s = st.columns([2, 1])
@@ -450,7 +453,7 @@ with st.form("issue_form", clear_on_submit=True):
 st.divider()
 
 # =========================
-# 8. FILTER / EXPORT
+# 9. FILTER / EXPORT
 # =========================
 if not df.empty:
     c_search, c_status, c_cat, c_page = st.columns([2, 1, 1, 1])
@@ -471,6 +474,24 @@ if not df.empty:
     page_size = len(df_show) if page_size_option == "All" else int(page_size_option)
 
     st.markdown(f"### Total Records: {len(df_show)}")
+
+    # =========================
+    # SAME WINDOW IMAGE PREVIEW
+    # =========================
+    if st.session_state.preview_image_url:
+        st.markdown('<div class="preview-box">', unsafe_allow_html=True)
+        p1, p2 = st.columns([6, 1])
+        with p1:
+            st.subheader(f"🖼️ Image Preview: {st.session_state.preview_record_no}")
+        with p2:
+            if st.button("Close Preview ❌"):
+                st.session_state.preview_image_url = ""
+                st.session_state.preview_record_no = ""
+                st.rerun()
+
+        st.image(st.session_state.preview_image_url, use_container_width=True)
+        st.caption("Use browser zoom (Ctrl + / Ctrl -) if you want to inspect more closely.")
+        st.markdown('</div>', unsafe_allow_html=True)
 
     # Export section
     st.subheader("📥 Export")
@@ -546,13 +567,16 @@ if not df.empty:
 
         with c_img:
             if r.get("image_url") and str(r["image_url"]).startswith("http"):
+                st.image(r["image_url"], width=150)
+
+                if st.button("Preview 🔍", key=f"preview_{r['id']}"):
+                    st.session_state.preview_image_url = r["image_url"]
+                    record_no = r["display_no"] if r.get("display_no") else f"{r['id']:03d}"
+                    st.session_state.preview_record_no = record_no
+                    st.rerun()
+
                 st.markdown(
-                    f"""
-                    <a href="{r['image_url']}" target="_blank" class="img-link">
-                        <img src="{r['image_url']}" class="img-card">
-                    </a>
-                    <div class="preview-note">Click image to preview / zoom</div>
-                    """,
+                    '<div class="preview-note">Click Preview to open in same page</div>',
                     unsafe_allow_html=True
                 )
 
